@@ -1110,3 +1110,34 @@ button {
   text-align: center;
   margin-top: 40px;
 }
+
+/* ===== Changed files: chế độ Tree (explorer) + nút toggle List↔Tree ===== */
+
+/* Nút icon (SVG theo currentColor) — cân giữa theo chiều dọc trong header. */
+.sg-tool.icon {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 4px;
+}
+
+.sg-tool.icon svg {
+  display: block;
+}
+
+/* Header "Changed files" giờ chứa cả nút toggle → chuyển sang flex. */
+.sg-detail-files-header {
+  display: flex;
+  align-items: center;
+}
+
+/* Hàng folder trong chế độ Tree: tái dùng sg-file-row, icon 📁 nhỏ lại
+   cho khớp cỡ chữ danh sách. */
+.sg-file-row.folder .sg-tree-icon {
+  font-size: 12px;
+}
+
+/* List commit nhận focus để điều hướng phím ↑/↓ — không vẽ outline
+   (giống list của VSCode; selection highlight đã đủ chỉ báo). */
+.sg-commit-list:focus {
+  outline: none;
+}

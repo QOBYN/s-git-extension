@@ -6,9 +6,11 @@ import { useState } from 'react';
 import type { FileChange } from '../../shared/types';
 import { ContextMenu, type MenuState } from '../components/ContextMenu';
 import { DiffPanel } from '../components/DiffPanel';
+import { FileListModeToggle, FileTreeList, treeRowPadding } from '../components/FileTreeList';
 import { Splitter } from '../components/Splitter';
 import { useLayoutStore } from '../store/layoutStore';
 import { useRepoStore, type WorkingSelection } from '../store/repoStore';
+import { useViewPrefs } from '../store/viewPrefsStore';
 import { copyText } from '../utils/clipboard';
 
 export function WorkingTreeScreen() {
@@ -92,6 +94,7 @@ export function WorkingTreeScreen() {
             area="unstaged"
             emptyText="No unstaged changes"
             onFileMenu={openFileMenu}
+            showModeToggle
           />
           <FilePane
             title={`Staged (${staged.length})`}
@@ -184,21 +187,25 @@ function FilePane({
   area,
   emptyText,
   onFileMenu,
+  showModeToggle = false,
 }: {
   title: string;
   files: FileChange[];
   area: WorkingSelection['area'];
   emptyText: string;
   onFileMenu(event: React.MouseEvent, file: FileChange, area: WorkingSelection['area']): void;
+  /** Nút List↔Tree chỉ đặt 1 chỗ (pane Changes) — pref là chung cho cả 2 pane. */
+  showModeToggle?: boolean;
 }) {
   const store = useRepoStore();
-  const selection = store.workingSelection;
+  const fileListMode = useViewPrefs((s) => s.fileListMode);
 
   return (
     <div className="sg-file-pane">
       <div className="sg-file-pane-header">
         <span>{title}</span>
         <span className="sg-diff-spacer" />
+        {showModeToggle && <FileListModeToggle />}
         {files.length > 0 && area === 'unstaged' && (
           <button
             className="sg-tool"
@@ -218,14 +225,30 @@ function FilePane({
       </div>
       <div className="sg-file-pane-body">
         {files.length === 0 && <p className="sg-empty small">{emptyText}</p>}
-        {files.map((file) => (
-          <WorkingFileRow
-            key={`${area}:${file.path}`}
-            file={file}
-            area={area}
-            onContextMenu={(e) => onFileMenu(e, file, area)}
+        {fileListMode === 'tree' ? (
+          <FileTreeList
+            items={files}
+            getPath={(f) => f.path}
+            renderFile={(file, depth) => (
+              <WorkingFileRow
+                key={`${area}:${file.path}`}
+                file={file}
+                area={area}
+                depth={depth}
+                onContextMenu={(e) => onFileMenu(e, file, area)}
+              />
+            )}
           />
-        ))}
+        ) : (
+          files.map((file) => (
+            <WorkingFileRow
+              key={`${area}:${file.path}`}
+              file={file}
+              area={area}
+              onContextMenu={(e) => onFileMenu(e, file, area)}
+            />
+          ))
+        )}
       </div>
     </div>
   );
@@ -234,10 +257,13 @@ function FilePane({
 function WorkingFileRow({
   file,
   area,
+  depth,
   onContextMenu,
 }: {
   file: FileChange;
   area: WorkingSelection['area'];
+  /** Có giá trị = đang ở chế độ Tree: thụt lề theo cấp, ẩn cột thư mục. */
+  depth?: number;
   onContextMenu(event: React.MouseEvent): void;
 }) {
   const store = useRepoStore();
@@ -248,13 +274,14 @@ function WorkingFileRow({
   return (
     <div
       className={`sg-file-row${selected ? ' selected' : ''}`}
+      style={depth !== undefined ? { paddingLeft: treeRowPadding(depth) } : undefined}
       onClick={() => void store.selectWorkingFile({ file, area })}
       onContextMenu={onContextMenu}
       title={file.origPath ? `${file.origPath} → ${file.path}` : file.path}
     >
       <span className={`sg-file-kind ${letter.className}`}>{letter.char}</span>
       <span className="sg-file-name">{fileName(file.path)}</span>
-      <span className="sg-file-dir">{dirName(file.path)}</span>
+      {depth === undefined && <span className="sg-file-dir">{dirName(file.path)}</span>}
       <span className="sg-row-actions">
         {area === 'unstaged' ? (
           <>

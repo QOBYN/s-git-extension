@@ -2,7 +2,9 @@
 // + message đầy đủ + danh sách file thay đổi (click file → diff dưới đáy).
 
 import type { CommitFileChange, CommitInfo } from '../../shared/types';
+import { useViewPrefs } from '../store/viewPrefsStore';
 import { AuthorBadge } from './AuthorBadge';
+import { FileListModeToggle, FileTreeList, treeRowPadding } from './FileTreeList';
 
 interface Props {
   commit: CommitInfo;
@@ -34,6 +36,8 @@ export function CommitDetail({
   onSelectFile,
   onFileContextMenu,
 }: Props) {
+  const fileListMode = useViewPrefs((s) => s.fileListMode);
+
   return (
     <aside className="sg-detail" style={{ width }}>
       <div className="sg-detail-header">
@@ -50,28 +54,74 @@ export function CommitDetail({
 
       <div className="sg-detail-message">{body ?? commit.subject}</div>
 
-      <div className="sg-detail-files-header">Changed files</div>
+      <div className="sg-detail-files-header">
+        <span>Changed files</span>
+        <span className="sg-diff-spacer" />
+        <FileListModeToggle />
+      </div>
       <div className="sg-detail-files">
-        {files.map((file) => (
-          <div
-            key={file.path}
-            className={`sg-file-row${file === selectedFile ? ' selected' : ''}`}
-            onClick={() => onSelectFile(file)}
-            onContextMenu={(event) => {
-              if (onFileContextMenu) {
-                event.preventDefault();
-                onFileContextMenu(event, file);
-              }
-            }}
-            title={file.origPath ? `${file.origPath} → ${file.path}` : file.path}
-          >
-            <span className={`sg-file-kind kind-${file.kind}`}>{KIND_LETTER[file.kind]}</span>
-            <span className="sg-file-name">{fileName(file.path)}</span>
-            <span className="sg-file-dir">{dirName(file.path)}</span>
-          </div>
-        ))}
+        {fileListMode === 'tree' ? (
+          <FileTreeList
+            items={files}
+            getPath={(f) => f.path}
+            renderFile={(file, depth) => (
+              <CommitFileRow
+                key={file.path}
+                file={file}
+                depth={depth}
+                selected={file === selectedFile}
+                onSelectFile={onSelectFile}
+                onFileContextMenu={onFileContextMenu}
+              />
+            )}
+          />
+        ) : (
+          files.map((file) => (
+            <CommitFileRow
+              key={file.path}
+              file={file}
+              selected={file === selectedFile}
+              onSelectFile={onSelectFile}
+              onFileContextMenu={onFileContextMenu}
+            />
+          ))
+        )}
       </div>
     </aside>
+  );
+}
+
+function CommitFileRow({
+  file,
+  depth,
+  selected,
+  onSelectFile,
+  onFileContextMenu,
+}: {
+  file: CommitFileChange;
+  /** Có giá trị = chế độ Tree: thụt lề theo cấp, ẩn cột thư mục. */
+  depth?: number;
+  selected: boolean;
+  onSelectFile(file: CommitFileChange): void;
+  onFileContextMenu?(event: React.MouseEvent, file: CommitFileChange): void;
+}) {
+  return (
+    <div
+      className={`sg-file-row${selected ? ' selected' : ''}`}
+      style={depth !== undefined ? { paddingLeft: treeRowPadding(depth) } : undefined}
+      onClick={() => onSelectFile(file)}
+      onContextMenu={(event) => {
+        if (onFileContextMenu) {
+          event.preventDefault();
+          onFileContextMenu(event, file);
+        }
+      }}
+      title={file.origPath ? `${file.origPath} → ${file.path}` : file.path}
+    >
+      <span className={`sg-file-kind kind-${file.kind}`}>{KIND_LETTER[file.kind]}</span>
+      <span className="sg-file-name">{fileName(file.path)}</span>
+      {depth === undefined && <span className="sg-file-dir">{dirName(file.path)}</span>}
+    </div>
   );
 }
 

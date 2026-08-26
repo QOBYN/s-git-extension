@@ -114,6 +114,57 @@ export function HistoryScreen() {
 
   const selected = store.commits.find((c) => c.oid === store.selectedOid) ?? null;
 
+  /**
+   * Điều hướng commit bằng bàn phím: ↑/↓ từng dòng, PageUp/Down từng trang,
+   * Home/End đầu/cuối. List ảo hoá → tự chỉnh scrollTop để hàng chọn luôn
+   * nằm trong viewport (không dùng scrollIntoView vì hàng có thể chưa render).
+   */
+  const onListKeyDown = (event: React.KeyboardEvent) => {
+    const count = visibleCommits.length;
+    if (count === 0) {
+      return;
+    }
+    const current = visibleCommits.findIndex((c) => c.oid === store.selectedOid);
+    const pageRows = Math.max(1, Math.floor(viewportHeight / ROW_HEIGHT) - 1);
+    let next: number;
+    switch (event.key) {
+      case 'ArrowDown':
+        next = Math.min(current + 1, count - 1);
+        break;
+      case 'ArrowUp':
+        next = Math.max(current - 1, 0);
+        break;
+      case 'PageDown':
+        next = Math.min(current + pageRows, count - 1);
+        break;
+      case 'PageUp':
+        next = Math.max(current - pageRows, 0);
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = count - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault(); // chặn scroll mặc định — mình tự cuộn theo selection
+    const commit = visibleCommits[next]!;
+    if (commit.oid !== store.selectedOid) {
+      void store.selectCommit(commit.oid);
+    }
+    const el = listRef.current;
+    if (el) {
+      const rowTop = next * ROW_HEIGHT;
+      if (rowTop < el.scrollTop) {
+        el.scrollTop = rowTop;
+      } else if (rowTop + ROW_HEIGHT > el.scrollTop + el.clientHeight) {
+        el.scrollTop = rowTop + ROW_HEIGHT - el.clientHeight;
+      }
+    }
+  };
+
   return (
     <>
       <div className="sg-main">
@@ -138,7 +189,14 @@ export function HistoryScreen() {
             />
           </div>
 
-          <div className="sg-commit-list" ref={listRef} onScroll={slice.onScroll}>
+          {/* tabIndex để nhận focus → phím ↑/↓ hoạt động; click row cũng focus. */}
+          <div
+            className="sg-commit-list"
+            ref={listRef}
+            tabIndex={0}
+            onScroll={slice.onScroll}
+            onKeyDown={onListKeyDown}
+          >
             {visibleCommits.length === 0 && !store.loading && store.error === null && (
               <p className="sg-empty">No commits to show</p>
             )}
@@ -150,7 +208,10 @@ export function HistoryScreen() {
                 graphRow={graph.rows[slice.start + i]}
                 laneCount={graph.laneCount}
                 selected={commit.oid === store.selectedOid}
-                onSelect={(oid) => void store.selectCommit(oid)}
+                onSelect={(oid) => {
+                  listRef.current?.focus(); // để ↑/↓ dùng được ngay sau khi click
+                  void store.selectCommit(oid);
+                }}
                 onContextMenu={openCommitMenu}
               />
             ))}
