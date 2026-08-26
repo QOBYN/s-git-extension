@@ -1248,3 +1248,17 @@ button {
   color: var(--sg-fg-dim);
   font-family: var(--sg-mono);
 }
+
+/* ===== Focus 2 pane trong History: list commit ↔ changed files ===== */
+
+.sg-detail-files:focus {
+  outline: none; /* giống list commit — selection màu là chỉ báo, không vẽ viền */
+}
+
+/* Pane KHÔNG giữ focus: selection chuyển màu inactive kiểu VSCode —
+   nhìn phát biết ↑/↓ đang điều khiển pane nào (commit hay file). */
+.sg-commit-list:not(:focus) .sg-commit-row.selected,
+.sg-detail-files:not(:focus) .sg-file-row.selected {
+  background: var(--vscode-list-inactiveSelectionBackground, var(--sg-row-selected));
+  color: var(--vscode-list-inactiveSelectionForeground, var(--sg-fg));
+}

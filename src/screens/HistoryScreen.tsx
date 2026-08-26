@@ -99,6 +99,8 @@ export function HistoryScreen() {
 
   // Đo chiều cao viewport danh sách cho ảo hoá.
   const listRef = useRef<HTMLDivElement>(null);
+  /** Container danh sách file của commit — → chuyển focus sang, ← quay lại. */
+  const detailFilesRef = useRef<HTMLDivElement>(null);
   const [viewportHeight, setViewportHeight] = useState(600);
   useEffect(() => {
     const el = listRef.current;
@@ -122,6 +124,24 @@ export function HistoryScreen() {
   const onListKeyDown = (event: React.KeyboardEvent) => {
     const count = visibleCommits.length;
     if (count === 0) {
+      return;
+    }
+    // → : chuyển điều khiển phím sang danh sách changed files của commit đang
+    // chọn (duyệt diff từng file bằng ↑/↓; ← ở đó quay lại đây).
+    if (event.key === 'ArrowRight') {
+      const filesEl = detailFilesRef.current;
+      if (filesEl !== null && store.commitFiles.length > 0) {
+        event.preventDefault();
+        filesEl.focus();
+        if (store.selectedFile === null) {
+          // Chọn file ĐẦU TIÊN THEO HIỂN THỊ (List/Tree khác thứ tự) — đọc DOM.
+          const firstPath = filesEl.querySelector<HTMLElement>('[data-path]')?.dataset.path;
+          const first = store.commitFiles.find((f) => f.path === firstPath);
+          if (first !== undefined) {
+            void store.selectFile(first);
+          }
+        }
+      }
       return;
     }
     const current = visibleCommits.findIndex((c) => c.oid === store.selectedOid);
@@ -239,6 +259,8 @@ export function HistoryScreen() {
               selectedFile={store.selectedFile}
               onSelectFile={(file) => void store.selectFile(file)}
               onFileContextMenu={openCommitFileMenu}
+              filesRef={detailFilesRef}
+              onFocusCommits={() => listRef.current?.focus()}
             />
           </>
         )}
