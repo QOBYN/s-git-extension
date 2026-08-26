@@ -20,9 +20,17 @@ export interface DiffStats {
   changeCount: number;
 }
 
+/**
+ * Kết quả điều hướng hunk: vị trí mới (1-based) cho nhãn "i/N", hoặc báo đã
+ * chạm biên ('start-edge'/'end-edge') — caller quyết định chuyển sang file khác.
+ */
+export type GotoDiffResult = { index: number; total: number } | 'start-edge' | 'end-edge';
+
 export interface DiffViewHandle {
-  /** Nhảy hunk; trả về vị trí mới (1-based) để toolbar hiện "i/N". */
-  gotoDiff(direction: 'next' | 'previous'): { index: number; total: number } | null;
+  /** Nhảy hunk (không wrap trong file); null khi không có thay đổi nào. */
+  gotoDiff(direction: 'next' | 'previous'): GotoDiffResult | null;
+  /** Nhảy thẳng tới change đầu/cuối — dùng sau khi chuyển file bằng ↑↓. */
+  jumpTo(position: 'first' | 'last'): { index: number; total: number } | null;
   /** Hunk hiện tại (theo con trỏ ↑↓; chưa điều hướng thì hunk đầu) — cho stage-hunk. */
   getCurrentChange(): monaco.editor.ILineChange | null;
   /** Nội dung pane phải (buffer đang sửa) — cho nút Save khi editable. */
@@ -188,6 +196,25 @@ export const DiffView = forwardRef<DiffViewHandle, Props>(function DiffView(
     });
   }, [sideBySide, compact, wordWrap, ignoreWhitespace, editable]);
 
+  /** Đặt con trỏ hunk + cuộn và CHỌN vùng change (feedback thấy được cả khi không cần cuộn). */
+  const moveToChange = (
+    editor: monaco.editor.IStandaloneDiffEditor,
+    changes: monaco.editor.ILineChange[],
+    index: number,
+  ): { index: number; total: number } => {
+    diffCursor.current = index;
+    const change = changes[index]!;
+    // Thuần xoá (modifiedEnd = 0): phía phải không có dòng — đứng ở dòng ngay
+    // trước vị trí xoá (clamp 1 khi xoá ở đầu file).
+    const startLine = Math.max(change.modifiedStartLineNumber, 1);
+    const endLine = change.modifiedEndLineNumber > 0 ? change.modifiedEndLineNumber : startLine;
+    const modifiedEditor = editor.getModifiedEditor();
+    const endColumn = modifiedEditor.getModel()?.getLineMaxColumn(endLine) ?? 1;
+    modifiedEditor.setSelection(new monaco.Selection(startLine, 1, endLine, endColumn));
+    modifiedEditor.revealLinesInCenter(startLine, endLine);
+    return { index: index + 1, total: changes.length };
+  };
+
   useImperativeHandle(ref, () => ({
     gotoDiff(direction) {
       const editor = editorRef.current;
@@ -195,14 +222,30 @@ export const DiffView = forwardRef<DiffViewHandle, Props>(function DiffView(
       if (!editor || !changes || changes.length === 0) {
         return null;
       }
-      diffCursor.current =
-        direction === 'next'
-          ? (diffCursor.current + 1) % changes.length
-          : (diffCursor.current - 1 + changes.length) % changes.length;
-      const change = changes[diffCursor.current];
-      const line = change.modifiedStartLineNumber || change.originalStartLineNumber;
-      editor.revealLineInCenter(line);
-      return { index: diffCursor.current + 1, total: changes.length };
+      if (direction === 'next') {
+        // Đã ở change cuối → báo biên, KHÔNG wrap — caller chuyển sang file kế.
+        if (diffCursor.current >= changes.length - 1) {
+          return 'end-edge';
+        }
+        return moveToChange(editor, changes, diffCursor.current + 1);
+      }
+      // ↑ khi chưa điều hướng lần nào: về change cuối (đi ngược từ đáy lên).
+      if (diffCursor.current === -1) {
+        return moveToChange(editor, changes, changes.length - 1);
+      }
+      if (diffCursor.current === 0) {
+        return 'start-edge';
+      }
+      return moveToChange(editor, changes, diffCursor.current - 1);
+    },
+
+    jumpTo(position) {
+      const editor = editorRef.current;
+      const changes = editor?.getLineChanges();
+      if (!editor || !changes || changes.length === 0) {
+        return null;
+      }
+      return moveToChange(editor, changes, position === 'first' ? 0 : changes.length - 1);
     },
 
     getCurrentChange() {

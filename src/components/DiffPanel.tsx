@@ -29,6 +29,12 @@ interface Props {
   /** Cho sửa trực tiếp pane phải + nút Save/⌘S (File Compare — D3). */
   editable?: boolean;
   onSaveContent?(content: string): void;
+  /**
+   * ↑/↓ chạm biên (change đầu/cuối của file): chuyển sang file trước/sau trong
+   * cùng commit — parent đổi selectedFile, panel tự nhảy tới change đầu/cuối
+   * của file mới khi diff tải xong. Không truyền → wrap vòng trong file.
+   */
+  onCrossFile?(direction: 'next' | 'previous'): void;
 }
 
 export function DiffPanel({
@@ -42,6 +48,7 @@ export function DiffPanel({
   onRevertHunk,
   editable,
   onSaveContent,
+  onCrossFile,
 }: Props) {
   // Tuỳ chọn hiển thị dùng chung + nhớ qua localStorage (diffPrefsStore).
   const options = useDiffPrefs();
@@ -53,6 +60,11 @@ export function DiffPanel({
   /** CSV: Table (mặc định) ↔ Text (Monaco). */
   const [csvMode, setCsvMode] = useState<'table' | 'text'>('table');
   const viewRef = useRef<DiffViewHandle>(null);
+  /**
+   * Đang chờ diff của FILE MỚI (vừa chuyển bằng ↑↓ từ biên file trước) tải xong
+   * để nhảy tới change đầu ('first', đi xuống) hoặc cuối ('last', đi lên).
+   */
+  const pendingEdgeJump = useRef<'first' | 'last' | null>(null);
 
   // Loại view theo file: text / image / csv / binary (host quyết text↔base64).
   const kind = diff !== null ? diffViewKind(path, diff) : 'text';
@@ -70,6 +82,14 @@ export function DiffPanel({
     const timer = setTimeout(() => setConfirmRevert(false), 3000);
     return () => clearTimeout(timer);
   }, [confirmRevert]);
+
+  // Chuyển file từ biên nhưng file mới là image/binary (không có Monaco) →
+  // huỷ cú nhảy đang chờ, kẻo nó "nổ" nhầm ở lần mở text diff sau.
+  useEffect(() => {
+    if (diff !== null && !showTextView) {
+      pendingEdgeJump.current = null;
+    }
+  }, [diff, showTextView]);
 
   const save = () => {
     const content = viewRef.current?.getModifiedContent();
@@ -90,8 +110,22 @@ export function DiffPanel({
     }
   };
 
-  const jump = (direction: 'next' | 'previous') =>
-    setCursor(viewRef.current?.gotoDiff(direction) ?? null);
+  const jump = (direction: 'next' | 'previous') => {
+    const result = viewRef.current?.gotoDiff(direction) ?? null;
+    if (result === 'end-edge' || result === 'start-edge') {
+      if (onCrossFile) {
+        // Chạm biên → sang file kế/trước trong commit; diff mới tải xong sẽ
+        // tự nhảy tới change đầu (đi xuống) / cuối (đi lên) — xem onDiffUpdate.
+        pendingEdgeJump.current = direction === 'next' ? 'first' : 'last';
+        onCrossFile(direction);
+      } else {
+        // Không có danh sách file (Working Tree/File Log) — wrap vòng trong file.
+        setCursor(viewRef.current?.jumpTo(direction === 'next' ? 'first' : 'last') ?? null);
+      }
+      return;
+    }
+    setCursor(result);
+  };
 
   const applyHunk = (handler: (change: LineChange) => void) => {
     const change = viewRef.current?.getCurrentChange();
@@ -237,7 +271,15 @@ export function DiffPanel({
           path={path}
           onDiffUpdate={(s) => {
             setStats(s);
-            setCursor(null); // đổi nội dung → vị trí hunk cũ hết ý nghĩa
+            // Vừa chuyển file từ biên bằng ↑↓ → tiếp tục mạch điều hướng:
+            // nhảy ngay tới change đầu/cuối của file mới.
+            const pending = pendingEdgeJump.current;
+            pendingEdgeJump.current = null;
+            if (pending !== null && s.changeCount > 0) {
+              setCursor(viewRef.current?.jumpTo(pending) ?? null);
+            } else {
+              setCursor(null); // đổi nội dung → vị trí hunk cũ hết ý nghĩa
+            }
           }}
           sideBySide={options.sideBySide}
           compact={options.compact}

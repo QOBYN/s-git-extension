@@ -117,6 +117,31 @@ export function HistoryScreen() {
   const selected = store.commits.find((c) => c.oid === store.selectedOid) ?? null;
 
   /**
+   * ↑/↓ trong diff chạm biên change đầu/cuối → chuyển file trước/sau TRONG CÙNG
+   * COMMIT, theo thứ tự đang hiển thị (List/Tree — đọc DOM qua data-path).
+   * Đầu/cuối danh sách file thì đứng yên.
+   */
+  const crossFile = (direction: 'next' | 'previous') => {
+    const filesEl = detailFilesRef.current;
+    if (filesEl === null) {
+      return;
+    }
+    const paths = Array.from(filesEl.querySelectorAll<HTMLElement>('[data-path]')).map(
+      (el) => el.dataset.path!,
+    );
+    const currentPath = store.selectedFile?.path ?? null;
+    const current = currentPath === null ? -1 : paths.indexOf(currentPath);
+    const next = direction === 'next' ? current + 1 : current - 1;
+    if (next < 0 || next >= paths.length) {
+      return;
+    }
+    const file = store.commitFiles.find((f) => f.path === paths[next]);
+    if (file !== undefined) {
+      void store.selectFile(file);
+    }
+  };
+
+  /**
    * Điều hướng commit bằng bàn phím: ↑/↓ từng dòng, PageUp/Down từng trang,
    * Home/End đầu/cuối. List ảo hoá → tự chỉnh scrollTop để hàng chọn luôn
    * nằm trong viewport (không dùng scrollIntoView vì hàng có thể chưa render).
@@ -279,6 +304,7 @@ export function HistoryScreen() {
             kindLabel={capitalize(store.selectedFile.kind)}
             diff={store.diff}
             loading={store.diffLoading}
+            onCrossFile={crossFile}
           />
         </>
       )}
