@@ -5,7 +5,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CommitFileChange, CommitInfo } from '../../shared/types';
-import { BranchesSidebar } from '../components/BranchesSidebar';
 import { CommitDetail } from '../components/CommitDetail';
 import { CommitRow } from '../components/CommitRow';
 import { ContextMenu, type MenuState } from '../components/ContextMenu';
@@ -28,8 +27,6 @@ interface RefPrompt {
 export function HistoryScreen() {
   const store = useRepoStore();
   const layout = useLayoutStore();
-  // Filter commit client-side trên trang đã tải (message/author/oid) — B4.
-  const [commitFilter, setCommitFilter] = useState('');
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [refPrompt, setRefPrompt] = useState<RefPrompt | null>(null);
 
@@ -83,8 +80,9 @@ export function HistoryScreen() {
     });
   };
 
+  // Search commit đến từ Ô SEARCH Ở SIDEBAR (navigate) — lọc client-side trang đã tải.
   const visibleCommits = useMemo(() => {
-    const needle = commitFilter.trim().toLowerCase();
+    const needle = (store.commitSearch ?? '').trim().toLowerCase();
     if (needle === '') {
       return store.commits;
     }
@@ -94,7 +92,7 @@ export function HistoryScreen() {
         c.author.toLowerCase().includes(needle) ||
         c.oid.startsWith(needle),
     );
-  }, [store.commits, commitFilter]);
+  }, [store.commits, store.commitSearch]);
 
   // Layout graph tính lại khi danh sách commit đổi — thuần TS, đủ nhanh cho 1k+/trang.
   const graph = useMemo(() => layoutGraph(visibleCommits), [visibleCommits]);
@@ -119,33 +117,29 @@ export function HistoryScreen() {
   return (
     <>
       <div className="sg-main">
-        <BranchesSidebar
-          refs={store.refs}
-          width={layout.branchesWidth}
-          activeRef={store.historyRef}
-          onSelectRef={(name) => void store.setHistoryRef(name)}
-          onCheckout={(name) => void store.checkoutBranch(name)}
-        />
-        <Splitter orientation="vertical" onResize={(d) => layout.resize('branchesWidth', d)} />
-
         <div className="sg-graph-column">
-          <div className="sg-graph-header">
-            {store.historyRef !== null && (
-              <span className="sg-ref-badge head" title="Graph filtered to this ref">
-                {store.historyRef}
-                <button className="sg-chip-clear" onClick={() => void store.setHistoryRef(null)}>
-                  ✕
-                </button>
-              </span>
-            )}
-            <span className="sg-diff-spacer" />
-            <input
-              className="sg-filter-input inline"
-              placeholder="Filter loaded commits"
-              value={commitFilter}
-              onChange={(e) => setCommitFilter(e.target.value)}
-            />
-          </div>
+          {/* Nhánh + filter + search đã dời ra sidebar VSCode — header chỉ còn
+              chip trạng thái lọc (kèm nút bỏ lọc), ẩn khi không lọc gì. */}
+          {(store.historyRef !== null || store.commitSearch) && (
+            <div className="sg-graph-header">
+              {store.historyRef !== null && (
+                <span className="sg-ref-badge head" title="Graph filtered to this ref">
+                  {store.historyRef}
+                  <button className="sg-chip-clear" onClick={() => void store.setHistoryRef(null)}>
+                    ✕
+                  </button>
+                </span>
+              )}
+              {store.commitSearch && (
+                <span className="sg-ref-badge" title="Commit search (from sidebar)">
+                  🔍 {store.commitSearch}
+                  <button className="sg-chip-clear" onClick={() => store.setCommitSearch(null)}>
+                    ✕
+                  </button>
+                </span>
+              )}
+            </div>
+          )}
 
           <div className="sg-commit-list" ref={listRef} onScroll={slice.onScroll}>
             {visibleCommits.length === 0 && !store.loading && store.error === null && (
@@ -164,7 +158,7 @@ export function HistoryScreen() {
               />
             ))}
             <div style={{ height: slice.bottomPad }} />
-            {store.hasMoreCommits && commitFilter === '' && (
+            {store.hasMoreCommits && !store.commitSearch && (
               <button className="sg-load-more" onClick={() => void store.loadMore()}>
                 Load more
               </button>

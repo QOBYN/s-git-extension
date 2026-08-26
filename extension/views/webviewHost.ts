@@ -22,6 +22,7 @@ export interface WebviewInitial {
   mode?: PanelMode | null;
   folder?: string | null;
   ref?: string | null;
+  search?: string | null;
   /** File cho màn File Log (đường dẫn tương đối trong repo). */
   filePath?: string | null;
 }

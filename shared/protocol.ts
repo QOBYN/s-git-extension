@@ -52,6 +52,8 @@ export interface HostFunctions {
     folder?: string | null,
     /** Lọc History theo 1 ref (click nhánh ở sidebar) — null = mọi nhánh. */
     ref?: string | null,
+    /** Tìm commit (message/tác giả/oid) — ô search nằm ở sidebar, kết quả hiện trong panel. */
+    search?: string | null,
   ): Promise<void>;
 
   // ---- ghi (P1) ----
@@ -102,5 +104,6 @@ export interface WebviewFunctions {
     mode: PanelMode | null,
     folder?: string | null,
     ref?: string | null,
+    search?: string | null,
   ): void;
 }

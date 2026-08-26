@@ -20,6 +20,8 @@ export interface PanelNavigation {
   folder: string | null;
   /** Lọc History theo 1 ref (null = mọi nhánh) — sidebar tab 2. */
   ref: string | null;
+  /** Tìm commit — ô search ở sidebar, kết quả trong panel. */
+  search: string | null;
 }
 
 export class MainPanel extends DisposableStore {
@@ -41,6 +43,7 @@ export class MainPanel extends DisposableStore {
             navigation.mode,
             navigation.folder,
             navigation.ref,
+            navigation.search,
           ),
         ).catch(() => {});
       }
@@ -73,6 +76,7 @@ export class MainPanel extends DisposableStore {
       mode: navigation?.mode ?? null,
       folder: navigation?.folder ?? null,
       ref: navigation?.ref ?? null,
+      search: navigation?.search ?? null,
     };
     const rpc = attachWebview(panel.webview, context, functions, hub, initial);
     this.remote = rpc.remote;

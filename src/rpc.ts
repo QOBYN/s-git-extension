@@ -21,7 +21,8 @@ export const host = createBirpc<HostFunctions, WebviewFunctions>(
   {
     repoChanged: (repoRoot, delta) => handlers.repoChanged?.(repoRoot, delta),
     operationProgress: (message) => handlers.operationProgress?.(message),
-    navigate: (repoRoot, mode, folder, ref) => handlers.navigate?.(repoRoot, mode, folder, ref),
+    navigate: (repoRoot, mode, folder, ref, search) =>
+      handlers.navigate?.(repoRoot, mode, folder, ref, search),
   },
   {
     post: (data) => vscodeApi.postMessage(data),

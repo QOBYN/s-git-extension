@@ -40,8 +40,8 @@ export function activate(context: vscode.ExtensionContext): void {
     runner,
     cache,
     panelOpener: {
-      open: (repoRoot, mode, folder, ref) =>
-        MainPanel.createOrShow(context, hostFunctions, hub, { repoRoot, mode, folder, ref }),
+      open: (repoRoot, mode, folder, ref, search) =>
+        MainPanel.createOrShow(context, hostFunctions, hub, { repoRoot, mode, folder, ref, search }),
     },
     shell: {
       openFile: (repoRoot, relPath) =>

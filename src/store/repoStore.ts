@@ -42,6 +42,8 @@ interface RepoStoreState {
   historyRef: string | null;
   /** Màn File Log: log của riêng file này (--follow); null = graph thường. */
   fileLogPath: string | null;
+  /** Tìm commit (từ ô search ở sidebar) — lọc client-side trang đã tải. */
+  commitSearch: string | null;
   selectedOid: string | null;
   commitBody: string | null;
   commitFiles: CommitFileChange[];
@@ -55,6 +57,10 @@ interface RepoStoreState {
   folderScope: string | null;
   /** Cây thư mục theo repo — sidebar tab Working Tree. */
   foldersByRepo: Record<string, string[]>;
+  /** Status từng repo — sidebar hiện badge số change per repo/folder. */
+  statusByRepo: Record<string, FileChange[]>;
+  /** Ô filter nhánh/tag của sidebar tab Git. */
+  sidebarRefFilter: string;
   workingSelection: WorkingSelection | null;
   workingDiff: DiffPayload | null;
   workingDiffLoading: boolean;
@@ -90,6 +96,12 @@ interface RepoStoreState {
   setFolderScope(folder: string | null): void;
   /** Sidebar: nạp cây thư mục của tất cả repo. */
   loadAllFolders(): Promise<void>;
+  /** Sidebar: nạp status mọi repo (badge số change). */
+  loadAllStatuses(): Promise<void>;
+  /** Sidebar: checkout nhánh của 1 repo bất kỳ (không cần activeRepo). */
+  sidebarCheckout(repoRoot: string, name: string): Promise<void>;
+  setCommitSearch(search: string | null): void;
+  setSidebarRefFilter(filter: string): void;
   setCommitMessage(message: string): void;
   stageFiles(paths: string[]): Promise<void>;
   unstageFiles(paths: string[]): Promise<void>;
@@ -114,6 +126,8 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
       if (get().activeRepoRoot === null) {
         void host.listRepos().then((repos) => set({ repos }));
         void get().loadAllRefs();
+        void get().loadAllStatuses();
+        void get().loadAllFolders();
         return;
       }
       if (repoRoot !== get().activeRepoRoot) {
@@ -129,7 +143,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     },
     operationProgress: (message) => set({ statusMessage: message }),
     // Sidebar click → host reveal panel + gửi navigate tới webview panel này.
-    navigate: (repoRoot, mode, folder, ref) => {
+    navigate: (repoRoot, mode, folder, ref, search) => {
       if (mode !== null) {
         get().setMode(mode);
       }
@@ -138,6 +152,9 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
       }
       if (ref !== undefined) {
         set({ historyRef: ref });
+      }
+      if (search !== undefined) {
+        set({ commitSearch: search });
       }
       if (repoRoot !== null && repoRoot !== get().activeRepoRoot) {
         void get().selectRepo(repoRoot);
@@ -215,6 +232,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     refsByRepo: {},
     historyRef: window.__SMARTGIT_INIT__?.ref ?? null,
     fileLogPath: window.__SMARTGIT_INIT__?.filePath ?? null,
+    commitSearch: window.__SMARTGIT_INIT__?.search ?? null,
     selectedOid: null,
     commitBody: null,
     commitFiles: [],
@@ -225,6 +243,8 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     status: null,
     folderScope: window.__SMARTGIT_INIT__?.folder ?? null,
     foldersByRepo: {},
+    statusByRepo: {},
+    sidebarRefFilter: '',
     workingSelection: null,
     workingDiff: null,
     workingDiffLoading: false,
@@ -263,7 +283,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
       try {
         const repos = await host.listRepos();
         set({ repos, loading: false, statusMessage: 'Ready' });
-        await Promise.all([get().loadAllRefs(), get().loadAllFolders()]);
+        await Promise.all([get().loadAllRefs(), get().loadAllFolders(), get().loadAllStatuses()]);
       } catch (error) {
         set({ loading: false, error: String(error) });
       }
@@ -293,6 +313,40 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
         }),
       );
       set({ foldersByRepo: Object.fromEntries(entries) });
+    },
+
+    async loadAllStatuses() {
+      const entries = await Promise.all(
+        get().repos.map(async (repo): Promise<[string, FileChange[]]> => {
+          try {
+            return [repo.root, (await host.getStatus(repo.root)).files];
+          } catch {
+            return [repo.root, []];
+          }
+        }),
+      );
+      set({ statusByRepo: Object.fromEntries(entries) });
+    },
+
+    async sidebarCheckout(repoRoot, name) {
+      set({ error: null });
+      try {
+        await host.checkout(repoRoot, name);
+        set({ statusMessage: `Checked out '${name}'.` });
+      } catch (error) {
+        set({ error: String(error) });
+      }
+      await Promise.all([get().loadAllRefs(), get().loadAllStatuses()]);
+      // Danh sách repo cũng đổi (branch hiển thị trên header).
+      set({ repos: await host.listRepos() });
+    },
+
+    setCommitSearch(search) {
+      set({ commitSearch: search });
+    },
+
+    setSidebarRefFilter(filter) {
+      set({ sidebarRefFilter: filter });
     },
 
     setFolderScope(folder) {

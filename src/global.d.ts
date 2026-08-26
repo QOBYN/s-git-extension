@@ -7,6 +7,7 @@ interface Window {
     mode?: 'workingTree' | 'history' | null;
     folder?: string | null;
     ref?: string | null;
+    search?: string | null;
     filePath?: string | null;
   };
   /** Instance acquireVsCodeApi — chỉ acquire được 1 lần/webview (src/rpc.ts). */

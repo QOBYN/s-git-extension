@@ -22,6 +22,7 @@ export interface PanelOpener {
     mode: PanelMode | null,
     folder: string | null,
     ref: string | null,
+    search: string | null,
   ): void;
 }
 
@@ -98,8 +99,8 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
 
     listFolders: (repoRoot) => git.listFolders(repoRoot),
 
-    async openPanel(repoRoot, mode, folder, ref) {
-      panelOpener.open(repoRoot, mode, folder ?? null, ref ?? null);
+    async openPanel(repoRoot, mode, folder, ref, search) {
+      panelOpener.open(repoRoot, mode, folder ?? null, ref ?? null, search ?? null);
     },
 
     async getStatus(repoRoot): Promise<WorkingTreeStatus> {
