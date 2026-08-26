@@ -748,7 +748,7 @@ button {
   margin-bottom: 4px;
 }
 
-.sg-sidebar-body /* ---- context menu + modal (mục E/G — style theo menu VSCode) ---- */
+/* ---- context menu + modal (mục E/G — style theo menu VSCode) ---- */
 
 .sg-menu-overlay {
   position: fixed;
@@ -1261,4 +1261,173 @@ button {
 .sg-detail-files:not(:focus) .sg-file-row.selected {
   background: var(--vscode-list-inactiveSelectionBackground, var(--sg-row-selected));
   color: var(--vscode-list-inactiveSelectionForeground, var(--sg-fg));
+}
+
+/* ===== Feedback: nút ở sidebar + form gửi góp ý về Telegram ===== */
+
+.sg-sidebar-footer {
+  flex-shrink: 0;
+  padding: 6px 8px;
+  border-top: 1px solid var(--sg-border);
+  background: var(--sg-bg-panel);
+}
+
+.sg-feedback-btn {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--sg-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--sg-fg);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.sg-feedback-btn:hover {
+  background: var(--sg-row-hover);
+  border-color: var(--vscode-focusBorder, var(--sg-border));
+}
+
+.sg-modal.feedback {
+  width: 460px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+
+.sg-feedback-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sg-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--sg-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sg-fg);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.sg-chip:hover {
+  background: var(--sg-row-hover);
+}
+
+.sg-chip.active {
+  background: var(--sg-row-selected);
+  color: var(--sg-row-selected-fg);
+  border-color: var(--vscode-focusBorder, var(--sg-border));
+}
+
+.sg-feedback-text {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--sg-input-border);
+  border-radius: 3px;
+  background: var(--sg-input-bg);
+  color: var(--sg-input-fg);
+  font: inherit;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.sg-feedback-text:focus {
+  outline: 1px solid var(--sg-accent);
+}
+
+/* Vùng đính kèm: viền nét đứt sáng lên khi kéo file vào form. */
+.sg-feedback-drop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px dashed var(--sg-border);
+  border-radius: 4px;
+}
+
+.sg-feedback-drop.dragging {
+  border-color: var(--sg-accent);
+  background: var(--sg-row-hover);
+}
+
+.sg-feedback-hint {
+  color: var(--sg-fg-dim);
+  font-size: 11px;
+}
+
+.sg-feedback-files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sg-feedback-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border: 1px solid var(--sg-border);
+  border-radius: 4px;
+}
+
+.sg-feedback-thumb {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.sg-feedback-thumb.doc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.sg-feedback-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.sg-feedback-remove {
+  border: none;
+  background: transparent;
+  color: var(--sg-fg-dim);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.sg-feedback-remove:hover {
+  background: var(--sg-row-hover);
+  color: var(--sg-fg);
+}
+
+.sg-feedback-note {
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.sg-feedback-note.warn {
+  background: var(--vscode-inputValidation-warningBackground, #5a4a33);
+  color: var(--vscode-inputValidation-warningForeground, var(--sg-fg));
+}
+
+.sg-feedback-note.error {
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  color: var(--vscode-inputValidation-errorForeground, var(--sg-fg));
+}
+
+.sg-feedback-note.ok {
+  background: var(--sg-row-hover);
+  color: var(--sg-fg);
 }

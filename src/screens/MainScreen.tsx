@@ -3,6 +3,7 @@
 // Working Tree và History dùng chung khung này.
 
 import { useEffect, useState } from 'react';
+import { FeedbackDialog } from '../components/FeedbackDialog';
 import { MergeDialog } from '../components/MergeDialog';
 import { useRepoStore } from '../store/repoStore';
 import { HistoryScreen } from './HistoryScreen';
@@ -12,6 +13,7 @@ export function MainScreen() {
   const store = useRepoStore();
   /** Dialog Merge/Rebase đang mở (từ toolbar) — null = đóng. */
   const [dialog, setDialog] = useState<'merge' | 'rebase' | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   useEffect(() => {
     void useRepoStore.getState().init();
@@ -94,6 +96,15 @@ export function MainScreen() {
           onClick={() => setDialog('rebase')}
           icon={<RebaseIcon />}
         />
+        {/* Feedback đứng riêng ở mép phải — không phải thao tác git. */}
+        <span className="sg-diff-spacer" />
+        <ToolbarButton
+          label="Feedback"
+          title="Góp ý / báo lỗi — gửi thẳng vào group Telegram của team"
+          disabled={false}
+          onClick={() => setFeedbackOpen(true)}
+          icon={<FeedbackIcon />}
+        />
       </div>
 
       {store.error !== null && <div className="sg-error">{store.error}</div>}
@@ -114,6 +125,18 @@ export function MainScreen() {
         />
       )}
 
+      {feedbackOpen && (
+        <FeedbackDialog
+          context={{
+            screen: 'main',
+            repoName: activeRepo?.name ?? null,
+            branch: activeRepo?.branch ?? null,
+          }}
+          onSent={(message) => useRepoStore.setState({ statusMessage: message })}
+          onClose={() => setFeedbackOpen(false)}
+        />
+      )}
+
       <div className="sg-status-bar">
         <span className={`sg-status-dot${store.loading ? ' busy' : ''}`} />
         {store.loading ? 'Working…' : store.statusMessage}
@@ -122,7 +145,7 @@ export function MainScreen() {
           ` · ${store.commits.length} commits`}
         {store.uiMode === 'workingTree' && changedCount > 0 && ` · ${changedCount} changed files`}
         <span className="sg-diff-spacer" />
-        <span title="Build time — xác nhận bundle đang chạy">{__SMARTGIT_BUILD__}</span>
+        <span title="Build time — xác nhận bundle đang chạy">{__SGIT_BUILD__}</span>
       </div>
     </div>
   );
@@ -192,6 +215,15 @@ function MergeIcon() {
       <circle cx="4" cy="12.5" r="1.75" />
       <circle cx="12" cy="8" r="1.75" />
       <path d="M4 5.25c0 3 2.5 2.75 6.25 2.75" />
+    </svg>
+  );
+}
+
+/** Bong bóng thoại — góp ý/báo lỗi. */
+function FeedbackIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <path d="M13.5 3.5v6a1.5 1.5 0 0 1-1.5 1.5H7l-3.5 2.5V11H4a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 4 2h8a1.5 1.5 0 0 1 1.5 1.5Z" />
     </svg>
   );
 }

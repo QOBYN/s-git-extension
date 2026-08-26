@@ -8,10 +8,13 @@ import { readExtensionConfig } from './adapters/config';
 import { FileStorage } from './adapters/fileStorage';
 import { GitWatcher } from './adapters/gitWatcher';
 import { NodeFileSystem } from './adapters/nodeFs';
+import { HttpTelegramApi } from './adapters/telegramApi';
 import { VscodeWorkspaceReader } from './adapters/vscodeWorkspace';
+import { FEEDBACK_TARGET } from './feedbackTarget';
 import { createHostFunctions } from './rpc/hostFunctions';
 import { RpcHub } from './rpc/rpcHub';
 import { CacheIndex } from './services/cacheIndex';
+import { FeedbackService } from './services/feedbackService';
 import { GitService } from './services/gitService';
 import { SpawnGitRunner } from './services/gitRunner';
 import { RepoManager } from './services/repoManager';
@@ -29,6 +32,15 @@ export function activate(context: vscode.ExtensionContext): void {
   const stateReader = new RepoStateReader(new NodeFileSystem());
   const repoManager = new RepoManager(new VscodeWorkspaceReader(), git, stateReader);
   const cache = new CacheIndex(new FileStorage(context.globalStorageUri.fsPath));
+  const feedback = new FeedbackService({
+    config: FEEDBACK_TARGET,
+    api: new HttpTelegramApi(),
+    appInfo: {
+      extensionVersion: (context.extension.packageJSON as { version?: string }).version ?? '0.0.0',
+      vscodeVersion: vscode.version,
+      platform: process.platform,
+    },
+  });
 
   const hub = new RpcHub();
   // panelOpener tham chiếu hostFunctions qua closure (gọi sau khi activate xong) —
@@ -56,6 +68,7 @@ export function activate(context: vscode.ExtensionContext): void {
       openFileLog: (repoRoot, relPath) =>
         FileLogPanel.show(context, hostFunctions, hub, repoRoot, relPath),
     },
+    feedback,
   });
 
   // ---- watcher .git/ → broadcast repoChanged (setup nền, không chặn activate) ----
@@ -85,7 +98,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(`${EXTENSION_ID_PREFIX}.fileLog`, async (uri?: vscode.Uri) => {
       const target = uri ?? vscode.window.activeTextEditor?.document.uri;
       if (!target || target.scheme !== 'file') {
-        void vscode.window.showWarningMessage('SmartGit: không xác định được file để xem log.');
+        void vscode.window.showWarningMessage('S-Git: không xác định được file để xem log.');
         return;
       }
       const repos = await repoManager.listRepos();
@@ -94,7 +107,7 @@ export function activate(context: vscode.ExtensionContext): void {
         .filter((r) => target.fsPath.startsWith(r.root + path.sep))
         .sort((a, b) => b.root.length - a.root.length)[0];
       if (!repo) {
-        void vscode.window.showWarningMessage('SmartGit: file không thuộc repo nào trong workspace.');
+        void vscode.window.showWarningMessage('S-Git: file không thuộc repo nào trong workspace.');
         return;
       }
       const relPath = path.relative(repo.root, target.fsPath).split(path.sep).join('/');

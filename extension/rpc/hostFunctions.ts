@@ -11,6 +11,7 @@ import type {
 } from '../../shared/types';
 import { hasBinaryContent, isKnownBinaryExtension } from '../services/binaryDetect';
 import type { CacheIndex } from '../services/cacheIndex';
+import type { FeedbackService } from '../services/feedbackService';
 import type { GitService } from '../services/gitService';
 import type { RepoManager } from '../services/repoManager';
 import type { RepoStateReader } from '../services/repoStateReader';
@@ -42,10 +43,11 @@ export interface HostFunctionDeps {
   cache: CacheIndex;
   panelOpener: PanelOpener;
   shell: ShellPort;
+  feedback: FeedbackService;
 }
 
 export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
-  const { repoManager, git, stateReader, runner, cache, panelOpener, shell } = deps;
+  const { repoManager, git, stateReader, runner, cache, panelOpener, shell, feedback } = deps;
 
   /**
    * Trang đầu của log đi qua cache (architecture.md mục 4): nếu headOid VÀ
@@ -187,6 +189,22 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
         throw new Error('Continue chỉ áp dụng cho rebase/cherry-pick đang dở');
       }
       await git.continueOperation(repoRoot, activity);
+    },
+
+    // ---- feedback ----
+    async isFeedbackConfigured() {
+      return feedback.isConfigured();
+    },
+    // Chốt chặn cuối: FeedbackService đã tự bắt lỗi, nhưng nếu có gì ngoài dự
+    // kiến ném ra (payload lạ, service đổi sau này) thì cũng phải thành
+    // FeedbackResult — Error đi qua birpc bị JSON hoá thành {} nên webview sẽ
+    // treo ở trạng thái "Đang gửi…" mà không biết vì sao.
+    async sendFeedback(payload) {
+      try {
+        return await feedback.send(payload);
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
     },
   };
 

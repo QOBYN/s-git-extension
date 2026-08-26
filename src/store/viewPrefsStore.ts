@@ -6,7 +6,7 @@ import { create } from 'zustand';
 
 export type FileListMode = 'list' | 'tree';
 
-const STORAGE_KEY = 'smartgit.viewPrefs';
+const STORAGE_KEY = 's-git.viewPrefs';
 const DEFAULT_MODE: FileListMode = 'list';
 
 interface StoredPrefs {

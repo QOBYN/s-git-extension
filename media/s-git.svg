@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Icon activity bar: cùng motif với media/icon.svg (branch uốn thành chữ S)
+       nhưng đơn sắc theo currentColor — VSCode tô lại theo theme, mọi màu cứng
+       đặt ở đây đều bị bỏ qua. Node để rỗng cho nhẹ nét ở 24px. -->
+  <path d="M16.2 7.4C16.2 5.1 7.8 5.1 7.8 9.1 C7.8 12.4 16.2 10.7 16.2 14.2 C16.2 18 7.8 18 7.8 15.8"/>
+  <circle cx="16.2" cy="7.4" r="2.1" fill="var(--vscode-activityBar-background, none)"/>
+  <circle cx="12" cy="12" r="2.1" fill="var(--vscode-activityBar-background, none)"/>
+  <circle cx="7.8" cy="15.8" r="2.1" fill="var(--vscode-activityBar-background, none)"/>
+</svg>

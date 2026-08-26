@@ -42,7 +42,7 @@ export class GitError extends Error {
 }
 
 export interface SpawnGitRunnerOptions {
-  /** Đường dẫn binary git — nối vào setting `smartgit.git.path` ở tầng adapter. */
+  /** Đường dẫn binary git — nối vào setting `s-git.git.path` ở tầng adapter. */
   gitPath?: string;
   maxOutputBytes?: number;
 }

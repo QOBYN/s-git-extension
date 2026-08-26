@@ -11,7 +11,7 @@ import { DisposableStore, toDisposable } from '../core/disposable';
 import { attachWebview, webviewOptions, type WebviewInitial } from './webviewHost';
 
 const VIEW_TYPE = `${EXTENSION_ID_PREFIX}.mainPanel`;
-const TITLE = 'SmartGit';
+const TITLE = 'S-Git';
 
 export interface PanelNavigation {
   repoRoot: string | null;

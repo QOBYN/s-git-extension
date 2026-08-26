@@ -1,0 +1,49 @@
+# Gói .vsix chỉ cần bundle đã build + metadata. Mặc định vsce đóng gói MỌI thứ
+# không bị liệt kê ở đây — kể cả file nằm trong .gitignore (vsce KHÔNG đọc
+# .gitignore khi đã có .vscodeignore) → phải liệt kê thủ công cho đủ.
+#
+# Kiểm tra trước khi publish:  npx @vscode/vsce ls
+# Xem dung lượng thật:         npx @vscode/vsce package && unzip -l *.vsix
+
+# ---- source: đã được vite bundle vào dist/, không cần ship ----
+src/**
+extension/**
+shared/**
+scripts/**
+index.html
+
+# ---- config build/test: chỉ dùng lúc dev ----
+tsconfig.json
+**/tsconfig.json
+vite.config.ts
+vitest.config.ts
+.vite/**
+**/*.test.ts
+**/*.test.tsx
+**/*.map
+
+# ---- dependency: bundle đã inline hết, node_modules chỉ làm phình gói ----
+node_modules/**
+package-lock.json
+
+# ---- tài liệu nội bộ & CI ----
+docs/**
+.github/**
+.vscode/**
+.claude/**
+CLAUDE.md
+CONTRIBUTING.md
+
+# ---- rác hệ thống / artifact ----
+.gitignore
+.vscodeignore
+**/.DS_Store
+*.vsix
+
+# ---- GIỮ LẠI (đối chiếu khi review `vsce ls`) ----
+# package.json     — manifest
+# README.md        — trang mô tả trên Marketplace
+# CHANGELOG.md     — tab Changelog trên Marketplace
+# LICENSE.md       — tab License trên Marketplace
+# dist/**          — bundle extension host + webview
+# media/**         — icon activity bar + icon Marketplace

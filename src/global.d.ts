@@ -15,4 +15,4 @@ interface Window {
 }
 
 /** Thời điểm build bundle (vite define) — hiện ở status bar để debug bundle cũ/mới. */
-declare const __SMARTGIT_BUILD__: string;
+declare const __SGIT_BUILD__: string;

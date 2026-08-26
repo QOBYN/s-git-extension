@@ -10,6 +10,8 @@ import type {
   CommitOptions,
   DiffPayload,
   DiffTarget,
+  FeedbackPayload,
+  FeedbackResult,
   LogOptions,
   LogPage,
   MergeResult,
@@ -104,6 +106,19 @@ export interface HostFunctions {
   rebase(repoRoot: string, onto: string): Promise<MergeResult>;
   abortOperation(repoRoot: string): Promise<void>;
   continueOperation(repoRoot: string): Promise<void>;
+
+  // ---- feedback — form góp ý gửi thẳng vào group Telegram ----
+  /**
+   * Bản build này có gắn sẵn bot token + chat id không (đích Telegram nằm trong
+   * bundle — extension/feedbackTarget.ts, người dùng không đổi được).
+   */
+  isFeedbackConfigured(): Promise<boolean>;
+  /**
+   * Gửi góp ý: đính kèm (ảnh/file) đi TRƯỚC, message đi SAU — để trong group
+   * phần chữ nằm ngay dưới các file của nó. Không ném lỗi: mọi thất bại trả về
+   * trong FeedbackResult.
+   */
+  sendFeedback(payload: FeedbackPayload): Promise<FeedbackResult>;
 }
 
 /** Hàm host gọi ngược sang webview (thông báo — không cần trả lời). */

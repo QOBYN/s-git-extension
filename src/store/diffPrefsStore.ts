@@ -12,7 +12,7 @@ const DEFAULTS: DiffViewOptions = {
   ignoreWhitespace: false,
 };
 
-const STORAGE_KEY = 'smartgit.diffPrefs';
+const STORAGE_KEY = 's-git.diffPrefs';
 
 function load(): DiffViewOptions {
   try {

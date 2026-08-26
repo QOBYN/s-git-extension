@@ -14,7 +14,7 @@ const FALLBACK_INSERTED = { r: 63, g: 185, b: 80 }; // xanh git
 const FALLBACK_REMOVED = { r: 248, g: 81, b: 73 }; // đỏ git
 
 /**
- * Định nghĩa (đè) theme smartgit theo theme VSCode hiện tại và trả về tên theme.
+ * Định nghĩa (đè) theme s-git theo theme VSCode hiện tại và trả về tên theme.
  * Gọi lại mỗi lần user đổi theme — defineTheme cùng tên sẽ ghi đè.
  */
 export function defineSmartGitTheme(): string {
@@ -24,7 +24,7 @@ export function defineSmartGitTheme(): string {
     : body.contains('vscode-high-contrast')
       ? 'hc-black'
       : 'vs-dark';
-  const name = `smartgit-${base}`;
+  const name = `s-git-${base}`;
 
   const inserted = readVar('--vscode-diffEditor-insertedTextBackground') ?? {
     ...FALLBACK_INSERTED,

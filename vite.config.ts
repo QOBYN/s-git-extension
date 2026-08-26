@@ -24,9 +24,9 @@ export default defineConfig({
     // → font 404 → mọi icon codicon thành ô vuông. Inline là hết phụ thuộc path.
     assetsInlineLimit: 200 * 1024,
   },
-  // Dấu build hiện ở status bar webview — xác nhận đang chạy bundle nào khi debug.
   define: {
-    __SMARTGIT_BUILD__: JSON.stringify(
+    // Dấu build hiện ở status bar webview — xác nhận đang chạy bundle nào khi debug.
+    __SGIT_BUILD__: JSON.stringify(
       new Date().toLocaleTimeString('en-GB', { hour12: false }) + ' ' + new Date().toLocaleDateString('en-CA'),
     ),
   },

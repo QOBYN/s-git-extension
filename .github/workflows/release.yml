@@ -1,0 +1,92 @@
+name: Release
+
+# Chạy khi push tag dạng v1.2.3:
+#   npm run release:minor     → npm version minor + tạo tag + git push --follow-tags
+#
+# Secrets khai ở Settings → Secrets and variables → Actions:
+#   VSCE_PAT  — Azure DevOps PAT, scope "Marketplace → Manage",
+#               Organization phải chọn "All accessible organizations"
+#   OVSX_PAT  — token từ https://open-vsx.org/user-settings/tokens
+# Thiếu secret nào thì bước đó tự bỏ qua kèm warning, không làm hỏng cả release.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Chỉ build + đóng gói .vsix, không publish đi đâu'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write # cần để tạo GitHub Release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Không publish thứ chưa qua kiểm tra — lặp đúng các bước của CI.
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      # Tag lệch version trong package.json là lỗi thầm lặng khó chịu nhất:
+      # Marketplace nhận bản mang số khác hẳn tag trên GitHub, về sau không
+      # truy được bản nào ứng với commit nào.
+      - name: Đối chiếu tag với version trong package.json
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag v$TAG ≠ package.json $PKG — dùng 'npm run release:*' thay vì sửa tay"
+            exit 1
+          fi
+
+      - name: Đóng gói .vsix
+        run: npx --no-install vsce package --out s-git.vsix
+
+      - name: Liệt kê nội dung gói
+        run: unzip -l s-git.vsix
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: s-git.vsix
+
+      - name: Publish → VS Code Marketplace
+        if: startsWith(github.ref, 'refs/tags/') && !inputs.dry_run
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then echo "::warning::thiếu secret VSCE_PAT — bỏ qua"; exit 0; fi
+          npx --no-install vsce publish --packagePath s-git.vsix
+
+      - name: Publish → Open VSX
+        if: startsWith(github.ref, 'refs/tags/') && !inputs.dry_run
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then echo "::warning::thiếu secret OVSX_PAT — bỏ qua"; exit 0; fi
+          npx --no-install ovsx publish s-git.vsix --pat "$OVSX_PAT"
+
+      - name: GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mv s-git.vsix "s-git-${GITHUB_REF_NAME#v}.vsix"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            "s-git-${GITHUB_REF_NAME#v}.vsix"

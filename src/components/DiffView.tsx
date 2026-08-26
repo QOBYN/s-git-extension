@@ -153,12 +153,12 @@ export const DiffView = forwardRef<DiffViewHandle, Props>(function DiffView(
       original: monaco.editor.createModel(
         original,
         undefined,
-        monaco.Uri.parse(`smartgit://original/${stamp}/${path}`),
+        monaco.Uri.parse(`s-git://original/${stamp}/${path}`),
       ),
       modified: monaco.editor.createModel(
         modified,
         undefined,
-        monaco.Uri.parse(`smartgit://modified/${stamp}/${path}`),
+        monaco.Uri.parse(`s-git://modified/${stamp}/${path}`),
       ),
     });
     previous?.original.dispose();

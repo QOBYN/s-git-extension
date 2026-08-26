@@ -1,15 +1,40 @@
 {
-  "name": "vscode-smartgit",
-  "displayName": "SmartGit",
-  "description": "SmartGit-like git client for VS Code",
+  "name": "s-git",
+  "displayName": "S-Git",
+  "description": "Git client trong VS Code: commit graph nhiều nhánh, staging theo hunk, diff/merge và file log — gói gọn trong một panel.",
   "version": "0.0.1",
-  "publisher": "minhtrung",
-  "private": true,
+  "publisher": "qobyn",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1F2430",
+    "theme": "dark"
+  },
+  "homepage": "https://github.com/QOBYN/s-git-extension#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/QOBYN/s-git-extension.git"
+  },
+  "bugs": {
+    "url": "https://github.com/QOBYN/s-git-extension/issues"
+  },
+  "pricing": "Free",
   "engines": {
     "vscode": "^1.100.0"
   },
   "categories": [
     "SCM Providers"
+  ],
+  "keywords": [
+    "git",
+    "git graph",
+    "git client",
+    "source control",
+    "commit",
+    "diff",
+    "merge",
+    "blame",
+    "file history"
   ],
   "activationEvents": [],
   "main": "dist/extension/index.js",
@@ -17,62 +42,62 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "smartgit",
-          "title": "SmartGit",
-          "icon": "media/smartgit.svg"
+          "id": "s-git",
+          "title": "S-Git",
+          "icon": "media/s-git.svg"
         }
       ]
     },
     "views": {
-      "smartgit": [
+      "s-git": [
         {
           "type": "webview",
-          "id": "smartgit.mainView",
+          "id": "s-git.mainView",
           "name": "Repository"
         }
       ]
     },
     "commands": [
       {
-        "command": "smartgit.openPanel",
-        "title": "SmartGit: Open Panel"
+        "command": "s-git.openPanel",
+        "title": "S-Git: Open Panel"
       },
       {
-        "command": "smartgit.fileLog",
-        "title": "SmartGit: File Log"
+        "command": "s-git.fileLog",
+        "title": "S-Git: File Log"
       }
     ],
     "menus": {
       "explorer/context": [
         {
-          "command": "smartgit.fileLog",
+          "command": "s-git.fileLog",
           "when": "!explorerResourceIsFolder",
-          "group": "7_smartgit"
+          "group": "7_s-git"
         }
       ],
       "editor/context": [
         {
-          "command": "smartgit.fileLog",
-          "group": "7_smartgit"
+          "command": "s-git.fileLog",
+          "group": "7_s-git"
         }
       ]
     },
     "configuration": {
-      "title": "SmartGit",
+      "title": "S-Git",
       "properties": {
-        "smartgit.git.path": {
+        "s-git.git.path": {
           "type": "string",
           "default": "",
           "markdownDescription": "Đường dẫn tới binary `git`. Để trống để dùng `git` trong PATH."
         },
-        "smartgit.log.pageSize": {
+        "s-git.log.pageSize": {
           "type": "number",
           "default": 1000,
           "minimum": 50,
           "maximum": 100000,
           "markdownDescription": "Số commit tải mỗi trang trong graph (trang tiếp theo tải bằng nút *Load more*)."
         },
-        "smartgit.git.watchDebounceMs": {
+        "s-git.git.watchDebounceMs": {
           "type": "number",
           "default": 300,
           "minimum": 0,
@@ -87,9 +112,16 @@
     "build": "vite build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p extension && tsc -p src && tsc -p tsconfig.json"
+    "typecheck": "tsc -p extension && tsc -p src && tsc -p tsconfig.json",
+    "icon": "node scripts/gen-icon.mjs",
+    "verify": "npm run typecheck && npm test && npm run build",
+    "package": "npm run verify && vsce package --out s-git.vsix",
+    "release:patch": "npm version patch && git push --follow-tags",
+    "release:minor": "npm version minor && git push --follow-tags",
+    "release:major": "npm version major && git push --follow-tags"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@tomjs/vite-plugin-vscode": "^7.1.1",
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.0",
@@ -97,8 +129,10 @@
     "@types/vscode": "^1.100.0",
     "@types/vscode-webview": "^1.57.5",
     "@vitejs/plugin-react-swc": "^3.7.0",
+    "@vscode/vsce": "^3.9.2",
     "birpc": "^4.2.0",
     "monaco-editor": "^0.56.0",
+    "ovsx": "^0.10.12",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "typescript": "^5.6.0",

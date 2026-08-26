@@ -56,7 +56,7 @@ monaco.json.jsonDefaults.setModeConfiguration(MODE_OFF);
 
 /**
  * Theme Monaco theo theme VSCode hiện tại — VSCode gắn class lên body của webview.
- * Dùng theme smartgit-* (màu diff lấy từ theme user + ép độ đậm tối thiểu cho
+ * Dùng theme s-git-* (màu diff lấy từ theme user + ép độ đậm tối thiểu cho
  * vùng thay đổi nổi rõ). Gọi lại khi theme đổi (observer trong DiffView).
  */
 export function syncMonacoTheme(): void {

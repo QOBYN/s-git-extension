@@ -9,7 +9,7 @@ function showFatal(message: string): void {
   const box = document.createElement('pre');
   box.style.cssText =
     'color:var(--vscode-errorForeground,#f66);padding:12px;white-space:pre-wrap;font-size:12px';
-  box.textContent = `SmartGit crashed:\n${message}`;
+  box.textContent = `S-Git crashed:\n${message}`;
   document.body.appendChild(box);
 }
 
@@ -19,7 +19,7 @@ window.addEventListener('error', (event) => {
   if (event.error instanceof Error) {
     showFatal(String(event.error.stack ?? event.error));
   } else {
-    console.warn('SmartGit resource error:', event);
+    console.warn('S-Git resource error:', event);
   }
 });
 window.addEventListener('unhandledrejection', (event) => showFatal(String(event.reason)));
@@ -35,7 +35,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
     if (this.state.error) {
       return (
         <pre className="sg-error">
-          SmartGit crashed:{'\n'}
+          S-Git crashed:{'\n'}
           {String(this.state.error.stack ?? this.state.error)}
         </pre>
       );

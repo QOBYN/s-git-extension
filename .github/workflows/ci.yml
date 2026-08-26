@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Push liên tiếp lên cùng branch → huỷ run cũ, chỉ giữ run mới nhất.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # 3 tsconfig riêng (extension host / webview / config root) — xem package.json.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # Package luôn ở CI: bắt sớm lỗi manifest/.vscodeignore thay vì để lộ ra
+      # lúc release (thiếu icon, thiếu README, dist/ bị ignore nhầm…).
+      - name: Package .vsix
+        run: npx --yes @vscode/vsce package --no-git-tag-version --out extension.vsix
+
+      - name: Show packaged contents
+        run: unzip -l extension.vsix
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix-${{ github.sha }}
+          path: extension.vsix
+          retention-days: 14

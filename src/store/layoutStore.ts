@@ -21,7 +21,7 @@ export const SIZE_LIMITS: Record<keyof LayoutSizes, { min: number; max: number }
   diffHeight: { min: 120, max: 900 },
 };
 
-const STORAGE_KEY = 'smartgit.layoutSizes';
+const STORAGE_KEY = 's-git.layoutSizes';
 
 function loadSizes(): LayoutSizes {
   try {

@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import type { RefInfo, RepoInfo } from '../../shared/types';
 import { childFolders } from '../../shared/folders';
 import { ContextMenu, type MenuState } from '../components/ContextMenu';
+import { FeedbackDialog } from '../components/FeedbackDialog';
 import { MergeDialog } from '../components/MergeDialog';
 import { PromptModal } from '../components/PromptModal';
 import { host } from '../rpc';
@@ -37,6 +38,7 @@ export function SidebarScreen() {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [renamePrompt, setRenamePrompt] = useState<RenamePrompt | null>(null);
   const [mergePrompt, setMergePrompt] = useState<MergePrompt | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   useEffect(() => {
     void useRepoStore.getState().initSidebar();
@@ -142,9 +144,32 @@ export function SidebarScreen() {
           </>
         )}
       </div>
+
+      {/* Luôn nằm đáy sidebar — lối góp ý ở đâu cũng thấy, không phải tìm. */}
+      <div className="sg-sidebar-footer">
+        <button
+          className="sg-feedback-btn"
+          title="Góp ý / báo lỗi — gửi thẳng vào group Telegram của team"
+          onClick={() => setFeedbackOpen(true)}
+        >
+          💬 Gửi góp ý
+        </button>
+      </div>
+
       {store.error !== null && <div className="sg-error">{store.error}</div>}
 
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {feedbackOpen && (
+        <FeedbackDialog
+          context={{
+            screen: 'sidebar',
+            // Sidebar không có repo "đang chọn"; 1 repo thì lấy luôn cho đỡ hỏi.
+            repoName: store.repos.length === 1 ? store.repos[0].name : null,
+            branch: store.repos.length === 1 ? store.repos[0].branch : null,
+          }}
+          onClose={() => setFeedbackOpen(false)}
+        />
+      )}
       {renamePrompt && (
         <PromptModal
           title={`Rename branch '${renamePrompt.oldName}'`}
