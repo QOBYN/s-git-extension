@@ -1,0 +1,27 @@
+<!-- Giữ dưới 1 trang. Claude đọc toàn bộ file này mỗi đầu phiên.
+     Quy tắc sống: Claude sai cùng một lỗi 2 lần → thêm correction vào đây. -->
+# <Tên service/product>
+
+## Commands
+- Build: <lệnh> (phải kết thúc với "<output khỏe mạnh>")
+- Test: <lệnh test 1 phát, exit non-zero khi fail> (unit), <lệnh> (integration)
+- Lint: <lệnh> (chạy trong CI; fix trước khi push)
+
+## Conventions
+- <Ngôn ngữ/framework version. Ví dụ: Java 21, Spring Boot 3. No new Lombok.>
+- <Quy tắc domain quan trọng. Ví dụ: Money luôn là BigDecimal, không bao giờ double.>
+- <Ví dụ: mọi endpoint cần integration test trong src/itest.>
+
+## Architecture
+- <Mô tả thư mục. Ví dụ: api/ chứa REST controllers, core/ chứa domain logic, adapters/ nói chuyện với hệ thống ngoài.>
+- <Ví dụ: Kafka events định nghĩa trong schemas/; không bao giờ sửa generated classes.>
+
+## Things Claude gets wrong
+- <Ví dụ: Không bump dependency versions; platform team sở hữu chúng.>
+- <Ví dụ: package legacy v1/ đã frozen; thay đổi vào v2/.>
+
+## Verifying your work
+- Build: <lệnh> (must finish with "Build succeeded")
+- Test: <lệnh> (all green; never skip or delete a failing test)
+- Lint: <lệnh> (zero warnings)
+Run all three before reporting done, paste output.

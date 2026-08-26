@@ -1,0 +1,139 @@
+// Parser cho `git status --porcelain=v2 -z --branch`. Hàm thuần — test bằng Vitest.
+//
+// Định dạng v2 với -z: mỗi record kết thúc bằng NUL; riêng record rename ('2')
+// có THÊM 1 token NUL kế tiếp là đường dẫn cũ. Tài liệu: git-status(1), STATUS V2.
+
+import type { ChangeKind, FileChange } from '../../shared/types';
+
+/** Kết quả thô từ status — GitService sẽ ghép thêm RepoActivity thành WorkingTreeStatus. */
+export interface StatusResult {
+  branch: string | null;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  files: FileChange[];
+}
+
+const NUL = '\0';
+
+export function parseStatusV2(stdout: string): StatusResult {
+  const result: StatusResult = { branch: null, upstream: null, ahead: 0, behind: 0, files: [] };
+  const tokens = stdout.split(NUL);
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token === '') {
+      continue;
+    }
+    switch (token[0]) {
+      case '#':
+        parseHeader(token, result);
+        break;
+      case '1': {
+        // `1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>` — 8 field rồi tới path
+        // (path có thể chứa khoảng trắng nên không split toàn bộ).
+        const { fields, rest } = splitFields(token, 8);
+        result.files.push(makeChange(fields[1], rest));
+        break;
+      }
+      case '2': {
+        // `2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <Xscore> <path>` + token kế = origPath.
+        const { fields, rest } = splitFields(token, 9);
+        const origPath = tokens[++i] ?? '';
+        result.files.push({ ...makeChange(fields[1], rest), origPath });
+        break;
+      }
+      case 'u': {
+        // `u <XY> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>` — file conflict.
+        const { rest } = splitFields(token, 10);
+        result.files.push({
+          path: rest,
+          staged: null,
+          unstaged: null,
+          untracked: false,
+          conflicted: true,
+        });
+        break;
+      }
+      case '?':
+        result.files.push({
+          path: token.slice(2),
+          staged: null,
+          unstaged: null,
+          untracked: true,
+          conflicted: false,
+        });
+        break;
+      case '!':
+        // File ignored — chỉ xuất hiện với --ignored; chế độ "All files, incl. ignored"
+        // (ui-analysis mục F) sẽ dùng đến, hiện bỏ qua.
+        break;
+      default:
+        // Loại record chưa biết (git version mới) — bỏ qua, không làm hỏng cả status.
+        break;
+    }
+  }
+  return result;
+}
+
+function parseHeader(token: string, result: StatusResult): void {
+  if (token.startsWith('# branch.head ')) {
+    const head = token.slice('# branch.head '.length);
+    // Git in "(detached)" khi detached HEAD — giữ null để UI tự hiển thị trạng thái.
+    result.branch = head === '(detached)' ? null : head;
+  } else if (token.startsWith('# branch.upstream ')) {
+    result.upstream = token.slice('# branch.upstream '.length);
+  } else if (token.startsWith('# branch.ab ')) {
+    // Dạng: `# branch.ab +<ahead> -<behind>`
+    const match = /^# branch\.ab \+(\d+) -(\d+)$/.exec(token);
+    if (match) {
+      result.ahead = Number(match[1]);
+      result.behind = Number(match[2]);
+    }
+  }
+}
+
+/** Tách `count` field đầu (cách nhau bởi space), phần còn lại trả nguyên (là path). */
+function splitFields(token: string, count: number): { fields: string[]; rest: string } {
+  const fields: string[] = [];
+  let start = 0;
+  for (let n = 0; n < count; n++) {
+    const idx = token.indexOf(' ', start);
+    if (idx === -1) {
+      return { fields, rest: '' };
+    }
+    fields.push(token.slice(start, idx));
+    start = idx + 1;
+  }
+  return { fields, rest: token.slice(start) };
+}
+
+/** XY của porcelain v2: X = trạng thái index (staged), Y = trạng thái working tree. */
+function makeChange(xy: string, path: string): FileChange {
+  return {
+    path,
+    staged: kindOf(xy[0]),
+    unstaged: kindOf(xy[1]),
+    untracked: false,
+    conflicted: false,
+  };
+}
+
+function kindOf(code: string | undefined): ChangeKind | null {
+  switch (code) {
+    case 'M':
+      return 'modified';
+    case 'A':
+      return 'added';
+    case 'D':
+      return 'deleted';
+    case 'R':
+      return 'renamed';
+    case 'C':
+      return 'copied';
+    case 'T':
+      return 'typechange';
+    default:
+      return null; // '.' = không thay đổi
+  }
+}

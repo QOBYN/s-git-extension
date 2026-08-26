@@ -1,0 +1,254 @@
+// Hiện thực HostFunctions (shared/protocol.ts) — cầu nối RPC → services.
+// File này KHÔNG chứa logic git; chỉ điều phối và chuyển đổi dữ liệu cho webview.
+
+import type { HostFunctions } from '../../shared/protocol';
+import type {
+  DiffPayload,
+  DiffTarget,
+  LogPage,
+  PanelMode,
+  WorkingTreeStatus,
+} from '../../shared/types';
+import type { CacheIndex } from '../services/cacheIndex';
+import type { GitService } from '../services/gitService';
+import type { RepoManager } from '../services/repoManager';
+import type { RepoStateReader } from '../services/repoStateReader';
+import { GitError, type GitRunner } from '../services/gitRunner';
+
+/** Cổng mở panel chính — composition root nối với MainPanel (tránh import vòng views). */
+export interface PanelOpener {
+  open(
+    repoRoot: string | null,
+    mode: PanelMode | null,
+    folder: string | null,
+    ref: string | null,
+  ): void;
+}
+
+/** Hành động phía VSCode/OS cho context menu file (G) — impl ở composition root. */
+export interface ShellPort {
+  openFile(repoRoot: string, relPath: string): void;
+  revealInOS(repoRoot: string, relPath: string): void;
+  openFileLog(repoRoot: string, relPath: string): void;
+}
+
+export interface HostFunctionDeps {
+  repoManager: RepoManager;
+  git: GitService;
+  stateReader: RepoStateReader;
+  runner: GitRunner;
+  cache: CacheIndex;
+  panelOpener: PanelOpener;
+  shell: ShellPort;
+}
+
+/**
+ * Nhóm hàm P2 chưa hiện thực ném lỗi này — webview P0/P1 không gọi tới;
+ * nếu gọi nhầm thì lỗi phải rõ ràng thay vì im lặng sai.
+ */
+class NotImplementedError extends Error {
+  constructor(feature: string, phase: string) {
+    super(`${feature} chưa hiện thực — theo lộ trình ${phase} trong docs/design/spec.md`);
+    this.name = 'NotImplementedError';
+  }
+}
+
+export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
+  const { repoManager, git, stateReader, runner, cache, panelOpener, shell } = deps;
+
+  /**
+   * Trang đầu của log đi qua cache (architecture.md mục 4): nếu headOid VÀ
+   * refsSignature không đổi thì trả cache ngay (mở panel tức thì trên repo lớn);
+   * lệch thì quét git thật rồi cập nhật cache. Trang "Load more" (skip>0)
+   * không cache — luôn quét.
+   */
+  async function getLogCached(repoRoot: string, opts?: Parameters<GitService['getLog']>[1]): Promise<LogPage> {
+    // Trang "Load more", log lọc theo ref, và log theo file không cache —
+    // chỉ cache trang đầu mặc định của graph.
+    if (opts?.skip || opts?.ref || opts?.path) {
+      return git.getLog(repoRoot, opts);
+    }
+    const [headOid, refsSignature] = await Promise.all([
+      git.getHeadOid(repoRoot),
+      git.getRefsSignature(repoRoot),
+    ]);
+    const cached = await cache.load(repoRoot);
+    if (cached !== null && cached.headOid === headOid && cached.refsSignature === refsSignature) {
+      return { commits: cached.commits, hasMore: cached.hasMore, headOid };
+    }
+    const page = await git.getLog(repoRoot, opts);
+    await cache.save(repoRoot, {
+      headOid: page.headOid,
+      refsSignature,
+      hasMore: page.hasMore,
+      commits: page.commits,
+    });
+    return page;
+  }
+
+  return {
+    // ---- đọc (P0) ----
+    listRepos: () => repoManager.listRepos(),
+
+    getLog: (repoRoot, opts) => getLogCached(repoRoot, opts),
+
+    listRefs: (repoRoot) => git.listRefs(repoRoot),
+    getCommitFiles: (repoRoot, oid) => git.getCommitFiles(repoRoot, oid),
+    getCommitBody: (repoRoot, oid) => git.getCommitBody(repoRoot, oid),
+
+    listFolders: (repoRoot) => git.listFolders(repoRoot),
+
+    async openPanel(repoRoot, mode, folder, ref) {
+      panelOpener.open(repoRoot, mode, folder ?? null, ref ?? null);
+    },
+
+    async getStatus(repoRoot): Promise<WorkingTreeStatus> {
+      const [status, gitDir] = await Promise.all([git.getStatus(repoRoot), git.getGitDir(repoRoot)]);
+      const state = await stateReader.read(gitDir);
+      return {
+        ...status,
+        activity: state.activity,
+        activityMessage: state.message,
+      };
+    },
+
+    async getDiff(repoRoot, target): Promise<DiffPayload> {
+      const [original, modified] = await Promise.all([
+        readSide(repoRoot, target, 'original'),
+        readSide(repoRoot, target, 'modified'),
+      ]);
+      return { original, modified };
+    },
+
+    // ---- ghi (P1) ----
+    stage: (repoRoot, paths) => git.stage(repoRoot, paths),
+    unstage: (repoRoot, paths) => git.unstage(repoRoot, paths),
+    commit: (repoRoot, message, opts) => git.commit(repoRoot, message, opts),
+
+    discard: (repoRoot, paths) => git.discard(repoRoot, paths),
+    checkout: (repoRoot, ref) => git.checkout(repoRoot, ref),
+    createBranch: (repoRoot, name, oid) => git.createBranch(repoRoot, name, oid),
+    createTag: (repoRoot, name, oid) => git.createTag(repoRoot, name, oid),
+
+    async openFile(repoRoot, relPath) {
+      shell.openFile(repoRoot, relPath);
+    },
+    async revealInOS(repoRoot, relPath) {
+      shell.revealInOS(repoRoot, relPath);
+    },
+    async openFileLog(repoRoot, relPath) {
+      shell.openFileLog(repoRoot, relPath);
+    },
+
+    stageHunk: (repoRoot, patch) => git.stageHunk(repoRoot, patch),
+    unstageHunk: (repoRoot, patch) => git.unstageHunk(repoRoot, patch),
+    revertHunk: (repoRoot, patch) => git.revertHunk(repoRoot, patch),
+
+    async saveWorkingFile(repoRoot, relPath, content) {
+      const { writeFile } = await import('node:fs/promises');
+      const { resolve, sep } = await import('node:path');
+      // Chặn path traversal: file ghi ra phải nằm TRONG repo.
+      const absPath = resolve(repoRoot, relPath);
+      if (!absPath.startsWith(resolve(repoRoot) + sep)) {
+        throw new Error(`Đường dẫn ngoài repo: ${relPath}`);
+      }
+      await writeFile(absPath, content, 'utf8');
+    },
+
+    // ---- merge / rebase (P2 — abort/continue làm trước để phục vụ banner trạng thái) ----
+    async merge() {
+      throw new NotImplementedError('Merge', 'P2');
+    },
+    async rebase() {
+      throw new NotImplementedError('Rebase', 'P2');
+    },
+
+    async abortOperation(repoRoot) {
+      const activity = await currentActivity(repoRoot);
+      if (activity === 'none') {
+        throw new Error('Không có thao tác nào đang dở để abort');
+      }
+      await git.abortOperation(repoRoot, activity);
+    },
+
+    async continueOperation(repoRoot) {
+      const activity = await currentActivity(repoRoot);
+      if (activity !== 'rebasing' && activity !== 'cherry-picking') {
+        // Merge không có continue — hoàn tất bằng Commit (spec 2.4).
+        throw new Error('Continue chỉ áp dụng cho rebase/cherry-pick đang dở');
+      }
+      await git.continueOperation(repoRoot, activity);
+    },
+  };
+
+  async function currentActivity(repoRoot: string) {
+    const gitDir = await git.getGitDir(repoRoot);
+    return (await stateReader.read(gitDir)).activity;
+  }
+
+  /**
+   * Lấy nội dung 1 phía của diff qua `git show`:
+   *  - workingTree: index (`:path`) ↔ file trên đĩa (git show không đọc được
+   *    working tree nên dùng `cat-file` không được — đọc qua diff của git ở P0
+   *    là chưa cần; tạm so index ↔ HEAD khi chưa có adapter đọc file, TODO P0-5).
+   *  - index:      HEAD (`HEAD:path`) ↔ index (`:path`)
+   *  - commit:     parent (`oid^:path`) ↔ commit (`oid:path`)
+   * File không tồn tại ở 1 phía (added/deleted) trả chuỗi rỗng — Monaco render
+   * thành diff toàn thêm/toàn xoá, đúng ngữ nghĩa.
+   */
+  async function readSide(
+    repoRoot: string,
+    target: DiffTarget,
+    side: 'original' | 'modified',
+  ): Promise<string> {
+    const spec = showSpec(target, side);
+    if (spec === null) {
+      return readWorkingFile(repoRoot, target.path);
+    }
+    try {
+      return await runner.run(repoRoot, ['show', spec]);
+    } catch (error) {
+      if (error instanceof GitError && isMissingPathError(error)) {
+        return '';
+      }
+      throw error;
+    }
+  }
+
+  /** null = phía này là file working tree (đọc từ đĩa, không qua git show). */
+  function showSpec(target: DiffTarget, side: 'original' | 'modified'): string | null {
+    switch (target.kind) {
+      case 'workingTree':
+        return side === 'original' ? `:${target.path}` : null;
+      case 'index':
+        return side === 'original' ? `HEAD:${target.path}` : `:${target.path}`;
+      case 'commit':
+        // `oid` bắt buộc theo contract DiffTarget — thiếu là bug ở caller.
+        if (!target.oid) {
+          throw new Error('DiffTarget.oid là bắt buộc khi kind === "commit"');
+        }
+        return side === 'original' ? `${target.oid}^:${target.path}` : `${target.oid}:${target.path}`;
+      default:
+        throw new Error(`DiffTarget.kind không hợp lệ: ${(target as DiffTarget).kind}`);
+    }
+  }
+
+  async function readWorkingFile(repoRoot: string, relPath: string): Promise<string> {
+    const { readFile } = await import('node:fs/promises');
+    const { join } = await import('node:path');
+    try {
+      return await readFile(join(repoRoot, relPath), 'utf8');
+    } catch {
+      return ''; // file đã xoá khỏi working tree
+    }
+  }
+}
+
+/** git show báo path không tồn tại ở revision đó (file added/deleted/commit gốc). */
+function isMissingPathError(error: GitError): boolean {
+  return (
+    error.stderr.includes('does not exist') ||
+    error.stderr.includes('exists on disk, but not in') ||
+    error.stderr.includes('bad revision')
+  );
+}

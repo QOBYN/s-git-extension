@@ -1,0 +1,113 @@
+{
+  "name": "vscode-smartgit",
+  "displayName": "SmartGit",
+  "description": "SmartGit-like git client for VS Code",
+  "version": "0.0.1",
+  "publisher": "minhtrung",
+  "private": true,
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "SCM Providers"
+  ],
+  "activationEvents": [],
+  "main": "dist/extension/index.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "smartgit",
+          "title": "SmartGit",
+          "icon": "media/smartgit.svg"
+        }
+      ]
+    },
+    "views": {
+      "smartgit": [
+        {
+          "type": "webview",
+          "id": "smartgit.mainView",
+          "name": "Repository"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "smartgit.openPanel",
+        "title": "SmartGit: Open Panel"
+      },
+      {
+        "command": "smartgit.fileLog",
+        "title": "SmartGit: File Log"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "smartgit.fileLog",
+          "when": "!explorerResourceIsFolder",
+          "group": "7_smartgit"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "smartgit.fileLog",
+          "group": "7_smartgit"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "SmartGit",
+      "properties": {
+        "smartgit.git.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Đường dẫn tới binary `git`. Để trống để dùng `git` trong PATH."
+        },
+        "smartgit.log.pageSize": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 50,
+          "maximum": 100000,
+          "markdownDescription": "Số commit tải mỗi trang trong graph (trang tiếp theo tải bằng nút *Load more*)."
+        },
+        "smartgit.git.watchDebounceMs": {
+          "type": "number",
+          "default": 300,
+          "minimum": 0,
+          "maximum": 5000,
+          "markdownDescription": "Thời gian gom sự kiện thay đổi `.git/` trước khi refresh (miligiây)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p extension && tsc -p src && tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@tomjs/vite-plugin-vscode": "^7.1.1",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/vscode": "^1.100.0",
+    "@types/vscode-webview": "^1.57.5",
+    "@vitejs/plugin-react-swc": "^3.7.0",
+    "birpc": "^4.2.0",
+    "monaco-editor": "^0.56.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0",
+    "zustand": "^5.0.0"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "@swc/core@1.16.1": true
+  }
+}

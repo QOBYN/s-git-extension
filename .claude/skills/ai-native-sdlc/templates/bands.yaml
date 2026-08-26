@@ -1,0 +1,15 @@
+# Control bands cho autonomous monitoring (Stage 6 — Maintain).
+# Detection luôn deterministic (script tính band, KHÔNG phải model).
+# Claude chỉ được invoke khi band breach; tier quyết định quyền hạn.
+metric: ci_test_failure_rate        # hoặc: post_deploy_5xx_rate, pr_cycle_time
+baseline: rolling_30d
+rules: western_electric             # bắt cả spike lẫn drift chậm
+tiers:
+  1sigma: { action: log }
+  2sigma: { action: diagnose,
+            tools: "Read,Grep,Bash(gh run view *)" }   # read-only
+  3sigma: { action: propose,
+            routes: [pull_request, runbook:rollback-deploy] }  # vẫn đi qua review gate / runbook pre-approved
+# Claude viết chẩn đoán thành intent.md (anomaly, evidence, proposed outcome,
+# affected systems, open questions) → vào triage queue của on-call.
+# Dismissal dùng để tune band. Fix ship xong → thêm eval cho incident.

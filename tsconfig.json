@@ -1,0 +1,16 @@
+{
+  // Tsconfig gốc: chỉ phục vụ các file config ở root (vite/vitest).
+  // Code thật dùng tsconfig riêng theo môi trường: extension/tsconfig.json (node),
+  // src/tsconfig.json (webview/DOM — tạo ở bước dựng UI).
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["vite.config.ts", "vitest.config.ts"]
+}

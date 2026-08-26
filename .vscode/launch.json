@@ -1,0 +1,13 @@
+{
+  // Chạy thử extension: F5 sau khi `npm run dev` (HMR) hoặc `npm run build`.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+      "outFiles": ["${workspaceFolder}/dist/extension/*.js"]
+    }
+  ]
+}
