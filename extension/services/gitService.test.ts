@@ -252,3 +252,102 @@ describe('GitService — truy vấn phụ', () => {
     expect(await new GitService(runner).getCurrentBranch('/repo')).toBeNull();
   });
 });
+
+describe('GitService — remote (fetch/pull/push)', () => {
+  it('fetch dùng --all --prune, exclusive', async () => {
+    const runner = new FakeGitRunner(() => '');
+    await new GitService(runner).fetch('/repo');
+
+    const call = runner.callsOf('fetch')[0];
+    expect(call.args).toEqual(['fetch', '--all', '--prune']);
+    expect(call.opts.exclusive).toBe(true);
+  });
+
+  it('push thành công không gọi thêm lệnh nào', async () => {
+    const runner = new FakeGitRunner(() => '');
+    await new GitService(runner).push('/repo');
+
+    expect(runner.calls).toHaveLength(1);
+  });
+
+  it('push chưa có upstream + đúng 1 remote → tự push -u <remote> HEAD', async () => {
+    const runner = new FakeGitRunner((args) => {
+      if (args[0] === 'push' && !args.includes('--set-upstream')) {
+        return new GitError('push', 128, 'fatal: The current branch feat has no upstream branch.');
+      }
+      return args[0] === 'remote' ? 'origin\n' : '';
+    });
+    await new GitService(runner).push('/repo');
+
+    expect(runner.callsOf('push')[1].args).toEqual(['push', '--set-upstream', 'origin', 'HEAD']);
+  });
+
+  it('push chưa có upstream + nhiều remote → giữ nguyên lỗi git (không đoán remote)', async () => {
+    const runner = new FakeGitRunner((args) => {
+      if (args[0] === 'push') {
+        return new GitError('push', 128, 'fatal: The current branch feat has no upstream branch.');
+      }
+      return 'origin\nupstream\n';
+    });
+    await expect(new GitService(runner).push('/repo')).rejects.toThrow('no upstream branch');
+  });
+});
+
+describe('GitService.merge / rebase', () => {
+  it('map chiến lược ra đúng cờ git', async () => {
+    const runner = new FakeGitRunner(() => '');
+    const git = new GitService(runner);
+    await git.merge('/repo', 'feat', 'fast-forward');
+    await git.merge('/repo', 'feat', 'merge-commit');
+    await git.merge('/repo', 'feat', 'merge-to-working-tree');
+    await git.merge('/repo', 'feat', 'squash');
+
+    expect(runner.callsOf('merge').map((c) => c.args)).toEqual([
+      ['merge', '--ff-only', 'feat'],
+      ['merge', '--no-ff', 'feat'],
+      ['merge', '--no-ff', '--no-commit', 'feat'],
+      ['merge', '--squash', 'feat'],
+    ]);
+    expect(runner.callsOf('merge').every((c) => c.opts.exclusive)).toBe(true);
+  });
+
+  it('"Already up to date" → status up-to-date', async () => {
+    const runner = new FakeGitRunner(() => 'Already up to date.\n');
+    const result = await new GitService(runner).merge('/repo', 'feat', 'merge-commit');
+    expect(result.status).toBe('up-to-date');
+  });
+
+  it('exit ≠ 0 kèm file unmerged → status conflicts + danh sách path', async () => {
+    const runner = new FakeGitRunner((args) => {
+      if (args[0] === 'merge') {
+        return new GitError('merge', 1, 'Automatic merge failed; fix conflicts.');
+      }
+      return 'a.ts\0dir/b.ts\0'; // diff --diff-filter=U
+    });
+    const result = await new GitService(runner).merge('/repo', 'feat', 'merge-commit');
+    expect(result).toEqual({ status: 'conflicts', conflictedPaths: ['a.ts', 'dir/b.ts'] });
+  });
+
+  it('exit ≠ 0 KHÔNG có file unmerged (vd ff-only thất bại) → ném nguyên GitError', async () => {
+    const runner = new FakeGitRunner((args) => {
+      if (args[0] === 'merge') {
+        return new GitError('merge', 128, 'fatal: Not possible to fast-forward, aborting.');
+      }
+      return ''; // không có conflict
+    });
+    await expect(
+      new GitService(runner).merge('/repo', 'feat', 'fast-forward'),
+    ).rejects.toThrow('Not possible to fast-forward');
+  });
+
+  it('rebase conflict cũng trả conflicts như merge (spec 2.4)', async () => {
+    const runner = new FakeGitRunner((args) => {
+      if (args[0] === 'rebase') {
+        return new GitError('rebase', 1, 'CONFLICT: could not apply abc123');
+      }
+      return 'x.ts\0';
+    });
+    const result = await new GitService(runner).rebase('/repo', 'main');
+    expect(result).toEqual({ status: 'conflicts', conflictedPaths: ['x.ts'] });
+  });
+});

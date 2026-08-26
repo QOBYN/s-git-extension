@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import type { RefInfo, RepoInfo } from '../../shared/types';
 import { childFolders } from '../../shared/folders';
 import { ContextMenu, type MenuState } from '../components/ContextMenu';
+import { MergeDialog } from '../components/MergeDialog';
 import { PromptModal } from '../components/PromptModal';
 import { host } from '../rpc';
 import { useRepoStore } from '../store/repoStore';
@@ -21,6 +22,13 @@ interface RenamePrompt {
   oldName: string;
 }
 
+/** Dialog Merge/Rebase mở từ context menu nhánh — nhánh bấm chuột là nguồn. */
+interface MergePrompt {
+  kind: 'merge' | 'rebase';
+  repo: RepoInfo;
+  target: string;
+}
+
 type SidebarTab = 'workingTree' | 'git';
 
 export function SidebarScreen() {
@@ -28,6 +36,7 @@ export function SidebarScreen() {
   const [tab, setTab] = useState<SidebarTab>('workingTree');
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [renamePrompt, setRenamePrompt] = useState<RenamePrompt | null>(null);
+  const [mergePrompt, setMergePrompt] = useState<MergePrompt | null>(null);
 
   useEffect(() => {
     void useRepoStore.getState().initSidebar();
@@ -51,6 +60,18 @@ export function SidebarScreen() {
         {
           label: 'Open History',
           onClick: () => void host.openPanel(repo.root, 'history', null, ref.name),
+        },
+        'sep',
+        {
+          // Nhánh bấm chuột là NGUỒN — merge vào nhánh đang checkout (D1).
+          label: `Merge into '${repo.branch ?? 'HEAD'}'…`,
+          disabled: ref.kind === 'tag' || ref.isHead,
+          onClick: () => setMergePrompt({ kind: 'merge', repo, target: ref.name }),
+        },
+        {
+          label: `Rebase '${repo.branch ?? 'HEAD'}' onto…`,
+          disabled: ref.kind === 'tag' || ref.isHead,
+          onClick: () => setMergePrompt({ kind: 'rebase', repo, target: ref.name }),
         },
         'sep',
         {
@@ -137,6 +158,22 @@ export function SidebarScreen() {
             )
           }
           onClose={() => setRenamePrompt(null)}
+        />
+      )}
+      {mergePrompt && (
+        <MergeDialog
+          kind={mergePrompt.kind}
+          currentBranch={mergePrompt.repo.branch}
+          targets={(store.refsByRepo[mergePrompt.repo.root] ?? [])
+            .filter((r) => r.kind !== 'tag' && !r.isHead)
+            .map((r) => r.name)}
+          initialTarget={mergePrompt.target}
+          onSubmit={(target, strategy) =>
+            void (mergePrompt.kind === 'merge'
+              ? store.mergeBranch(mergePrompt.repo.root, target, strategy)
+              : store.rebaseBranch(mergePrompt.repo.root, target))
+          }
+          onClose={() => setMergePrompt(null)}
         />
       )}
     </div>

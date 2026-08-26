@@ -81,6 +81,10 @@ export class SpawnGitRunner implements GitRunner {
           // Lệnh cần editor (rebase --continue…) không được treo chờ editor:
           // 'true' = chấp nhận message mặc định.
           GIT_EDITOR: 'true',
+          // Lệnh network (fetch/pull/push) không được treo chờ nhập credentials
+          // trong process nền — fail ngay với thông điệp rõ (user dùng ssh-agent/
+          // credential helper như các git GUI khác).
+          GIT_TERMINAL_PROMPT: '0',
         },
       });
 

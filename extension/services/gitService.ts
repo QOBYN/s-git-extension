@@ -4,7 +4,14 @@
 
 import { createHash } from 'node:crypto';
 import { DEFAULT_LOG_PAGE_SIZE } from '../../shared/constants';
-import type { CommitFileChange, LogOptions, LogPage, RefInfo } from '../../shared/types';
+import type {
+  CommitFileChange,
+  LogOptions,
+  LogPage,
+  MergeResult,
+  MergeStrategy,
+  RefInfo,
+} from '../../shared/types';
 import { parseCommitFiles } from './commitFilesParser';
 import { foldersFromPaths } from '../../shared/folders';
 import { GitError, type GitRunner } from './gitRunner';
@@ -265,6 +272,107 @@ export class GitService {
   /** Revert 1 hunk khỏi WORKING TREE (không đụng index) — patch từ diff index↔working. */
   async revertHunk(root: string, patch: string): Promise<void> {
     await this.runner.run(root, ['apply', '--reverse', '-'], { stdin: patch, exclusive: true });
+  }
+
+  // ---- remote (P2): fetch / pull / push — đều exclusive vì có thể đổi refs/working tree ----
+
+  /** Fetch mọi remote, dọn nhánh remote đã xoá (--prune) — nút toolbar Fetch. */
+  async fetch(root: string): Promise<void> {
+    await this.runner.run(root, ['fetch', '--all', '--prune'], { exclusive: true });
+  }
+
+  /**
+   * Pull theo config của user (pull.rebase/pull.ff…) — không áp đặt chiến lược.
+   * Nhánh phân kỳ mà chưa cấu hình cách hoà: git tự từ chối với hint rõ ràng,
+   * UI hiển thị nguyên stderr đó.
+   */
+  async pull(root: string): Promise<void> {
+    await this.runner.run(root, ['pull'], { exclusive: true });
+  }
+
+  /**
+   * Push nhánh hiện tại. Nhánh chưa có upstream: nếu repo có ĐÚNG 1 remote thì
+   * tự `push -u <remote> HEAD` (hành vi của các git GUI); nhiều remote thì giữ
+   * nguyên lỗi của git để user tự quyết — không đoán bừa remote.
+   */
+  async push(root: string): Promise<void> {
+    try {
+      await this.runner.run(root, ['push'], { exclusive: true });
+    } catch (error) {
+      if (!(error instanceof GitError) || !error.stderr.includes('no upstream branch')) {
+        throw error;
+      }
+      const remotes = (await this.runner.run(root, ['remote']))
+        .split('\n')
+        .filter((r) => r !== '');
+      if (remotes.length !== 1) {
+        throw error;
+      }
+      await this.runner.run(root, ['push', '--set-upstream', remotes[0]!, 'HEAD'], {
+        exclusive: true,
+      });
+    }
+  }
+
+  // ---- merge / rebase (P2 — spec 2.4: conflict dùng chung luồng với banner D2) ----
+
+  /**
+   * Merge `target` vào nhánh hiện tại theo chiến lược của dialog D1.
+   * Exit ≠ 0 kèm file conflict → trả 'conflicts' (không phải lỗi — user xử lý
+   * tiếp trong Working Tree); lỗi khác ném nguyên GitError.
+   */
+  async merge(root: string, target: string, strategy: MergeStrategy): Promise<MergeResult> {
+    const args: Record<MergeStrategy, string[]> = {
+      'fast-forward': ['merge', '--ff-only', target],
+      'merge-commit': ['merge', '--no-ff', target],
+      // "Merge to Working Tree" của SmartGit: hoà vào working tree + index,
+      // DỪNG trước commit để user xem lại (ui-analysis D1).
+      'merge-to-working-tree': ['merge', '--no-ff', '--no-commit', target],
+      squash: ['merge', '--squash', target],
+    };
+    try {
+      const out = await this.runner.run(root, args[strategy], { exclusive: true });
+      return {
+        status: out.includes('Already up to date') ? 'up-to-date' : 'clean',
+        conflictedPaths: [],
+      };
+    } catch (error) {
+      return { status: 'conflicts', conflictedPaths: await this.conflictsOrRethrow(root, error) };
+    }
+  }
+
+  /** Rebase nhánh hiện tại lên `onto` — conflict xử lý như merge (spec 2.4). */
+  async rebase(root: string, onto: string): Promise<MergeResult> {
+    try {
+      const out = await this.runner.run(root, ['rebase', onto], { exclusive: true });
+      return {
+        status: out.includes('is up to date') ? 'up-to-date' : 'clean',
+        conflictedPaths: [],
+      };
+    } catch (error) {
+      return { status: 'conflicts', conflictedPaths: await this.conflictsOrRethrow(root, error) };
+    }
+  }
+
+  /** Danh sách file đang conflict (unmerged) trong working tree. */
+  async listConflictedPaths(root: string): Promise<string[]> {
+    const out = await this.runner.run(root, ['diff', '--name-only', '--diff-filter=U', '-z']);
+    return out.split('\0').filter((p) => p !== '');
+  }
+
+  /**
+   * Merge/rebase exit ≠ 0 có 2 khả năng: conflict (bình thường — trả danh sách
+   * file) hoặc lỗi thật (ff-only không ff được, ref sai…) — ném lại nguyên vẹn.
+   */
+  private async conflictsOrRethrow(root: string, error: unknown): Promise<string[]> {
+    if (!(error instanceof GitError)) {
+      throw error;
+    }
+    const conflicted = await this.listConflictedPaths(root);
+    if (conflicted.length === 0) {
+      throw error;
+    }
+    return conflicted;
   }
 
   /** Abort thao tác đang dở — lệnh tuỳ trạng thái (spec 2.4: merge/rebase dùng chung luồng). */

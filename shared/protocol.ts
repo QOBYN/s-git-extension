@@ -91,6 +91,14 @@ export interface HostFunctions {
   /** Mở tab File Log cho 1 file (menu "File Log" — đường vào màn hình C). */
   openFileLog(repoRoot: string, relPath: string): Promise<void>;
 
+  // ---- remote (P2) — toolbar Fetch / Pull / Push ----
+  /** `git fetch --all --prune`. */
+  fetch(repoRoot: string): Promise<void>;
+  /** `git pull` — chiến lược hoà theo config của user (pull.rebase…). */
+  pull(repoRoot: string): Promise<void>;
+  /** `git push`; nhánh chưa có upstream + đúng 1 remote thì tự `push -u`. */
+  push(repoRoot: string): Promise<void>;
+
   // ---- merge / rebase (P2) — spec mục 2.4: rebase dùng chung luồng conflict với merge ----
   merge(repoRoot: string, target: string, strategy: MergeStrategy): Promise<MergeResult>;
   rebase(repoRoot: string, onto: string): Promise<MergeResult>;

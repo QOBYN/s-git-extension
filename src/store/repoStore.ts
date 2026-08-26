@@ -9,6 +9,8 @@ import type {
   DiffPayload,
   FileChange,
   LogPage,
+  MergeResult,
+  MergeStrategy,
   PanelMode,
   RefInfo,
   RepoInfo,
@@ -118,6 +120,16 @@ interface RepoStoreState {
   commitNow(opts: { amend: boolean }): Promise<void>;
   abortOperation(): Promise<void>;
   continueOperation(): Promise<void>;
+
+  // ---- remote + merge/rebase (P2) ----
+  /** Toolbar: fetch/pull/push trên repo active của panel chính. */
+  remoteOp(kind: 'fetch' | 'pull' | 'push'): Promise<void>;
+  /**
+   * Merge `target` vào nhánh hiện tại của `repoRoot` (dialog D1). Nhận repoRoot
+   * tường minh vì gọi được từ cả panel chính (repo active) lẫn sidebar (repo bất kỳ).
+   */
+  mergeBranch(repoRoot: string, target: string, strategy: MergeStrategy): Promise<void>;
+  rebaseBranch(repoRoot: string, onto: string): Promise<void>;
 }
 
 export const useRepoStore = create<RepoStoreState>((set, get) => {
@@ -603,5 +615,109 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
 
     continueOperation: () =>
       mutate(() => host.continueOperation(get().activeRepoRoot!), 'Continued.'),
+
+    // ---- remote + merge/rebase (P2) ----
+
+    async remoteOp(kind) {
+      const root = get().activeRepoRoot;
+      if (root === null || get().loading) {
+        return; // đang có thao tác khác — toolbar cũng disable, đây là chốt chặn cuối
+      }
+      const labels = {
+        fetch: ['Fetching…', 'Fetch completed.'],
+        pull: ['Pulling…', 'Pull completed.'],
+        push: ['Pushing…', 'Push completed.'],
+      }[kind];
+      set({ error: null, loading: true, statusMessage: labels[0] });
+      try {
+        await { fetch: host.fetch, pull: host.pull, push: host.push }[kind](root);
+        // Refresh TRƯỚC rồi mới set message chốt — fetchLog thành công sẽ set 'Ready' đè lên.
+        await Promise.all([fetchLog(root, false), fetchRefs(root), fetchStatus(root)]);
+        set({ statusMessage: labels[1] });
+      } catch (error) {
+        set({ error: String(error) });
+      }
+      set({ loading: false });
+    },
+
+    async mergeBranch(repoRoot, target, strategy) {
+      set({ error: null, loading: true, statusMessage: `Merging '${target}'…` });
+      try {
+        const result = await host.merge(repoRoot, target, strategy);
+        await refreshRepoData(repoRoot);
+        set({ statusMessage: mergeMessage(target, strategy, result) });
+        // Conflict hoặc merge dừng trước commit (--no-commit/squash) → user phải
+        // xử lý tiếp trong Working Tree — đưa tới đó luôn.
+        if (result.status === 'conflicts' || (result.status === 'clean' && strategy !== 'fast-forward' && strategy !== 'merge-commit')) {
+          focusWorkingTree(repoRoot);
+        }
+      } catch (error) {
+        set({ error: String(error) });
+        await refreshRepoData(repoRoot);
+      }
+      set({ loading: false });
+    },
+
+    async rebaseBranch(repoRoot, onto) {
+      set({ error: null, loading: true, statusMessage: `Rebasing onto '${onto}'…` });
+      try {
+        const result = await host.rebase(repoRoot, onto);
+        await refreshRepoData(repoRoot);
+        if (result.status === 'conflicts') {
+          set({
+            statusMessage: `Rebase onto '${onto}' hit conflicts (${result.conflictedPaths.length} files) — resolve, then Continue.`,
+          });
+          focusWorkingTree(repoRoot); // banner D2 có nút Continue/Abort
+        } else {
+          set({
+            statusMessage:
+              result.status === 'up-to-date' ? 'Already up to date.' : `Rebased onto '${onto}'.`,
+          });
+        }
+      } catch (error) {
+        set({ error: String(error) });
+        await refreshRepoData(repoRoot);
+      }
+      set({ loading: false });
+    },
   };
+
+  /** Merge/rebase xong: panel chính refresh repo active, sidebar refresh mọi repo. */
+  async function refreshRepoData(root: string): Promise<void> {
+    if (get().activeRepoRoot !== null) {
+      await Promise.all([fetchLog(root, false), fetchRefs(root), fetchStatus(root)]);
+    } else {
+      // Webview sidebar (không có repo active) — refresh dữ liệu dạng per-repo.
+      await Promise.all([get().loadAllRefs(), get().loadAllStatuses()]);
+      set({ repos: await host.listRepos() });
+    }
+  }
+
+  /** Kết quả cần user xử lý tiếp (conflict/commit dở) → đưa tới Working Tree. */
+  function focusWorkingTree(repoRoot: string): void {
+    if (get().activeRepoRoot !== null) {
+      set({ uiMode: 'workingTree' });
+    } else {
+      // Sidebar không có màn Working Tree — mở/reveal panel chính đúng chỗ.
+      void host.openPanel(repoRoot, 'workingTree', null, null, null);
+    }
+  }
 });
+
+/** Thông điệp status bar sau merge — nói rõ bước tiếp theo khi merge dừng giữa chừng. */
+function mergeMessage(target: string, strategy: MergeStrategy, result: MergeResult): string {
+  if (result.status === 'conflicts') {
+    return `Merge of '${target}' has conflicts (${result.conflictedPaths.length} files) — resolve them, then commit.`;
+  }
+  if (result.status === 'up-to-date') {
+    return 'Already up to date.';
+  }
+  switch (strategy) {
+    case 'merge-to-working-tree':
+      return `Merged '${target}' into working tree — review changes and commit.`;
+    case 'squash':
+      return `Squashed '${target}' — review changes and commit.`;
+    default:
+      return `Merged '${target}'.`;
+  }
+}

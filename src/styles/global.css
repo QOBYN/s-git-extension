@@ -1141,3 +1141,110 @@ button {
 .sg-commit-list:focus {
   outline: none;
 }
+
+/* ===== Toolbar Fetch / Pull / Push / Merge / Rebase (ui-analysis A1) ===== */
+
+.sg-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--sg-border);
+  background: var(--sg-bg-panel);
+  flex-shrink: 0;
+}
+
+.sg-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  color: var(--sg-fg);
+  padding: 4px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.sg-toolbar-btn:hover:not(:disabled) {
+  background: var(--sg-row-hover);
+}
+
+.sg-toolbar-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.sg-toolbar-btn svg {
+  display: block;
+}
+
+/* ===== Dialog Merge/Rebase (pattern D1: nút hành động dọc, rõ nghĩa) ===== */
+
+.sg-modal.wide {
+  width: 420px;
+}
+
+.sg-modal-desc {
+  font-size: 12px;
+  line-height: 2; /* chỗ thở cho <select> nằm giữa câu */
+}
+
+.sg-modal-note {
+  font-size: 11px;
+  color: var(--sg-fg-dim);
+  margin: 2px 0 0;
+}
+
+.sg-ref-select {
+  max-width: 220px;
+  background: var(--vscode-dropdown-background, var(--sg-bg));
+  color: var(--vscode-dropdown-foreground, var(--sg-fg));
+  border: 1px solid var(--vscode-dropdown-border, var(--sg-border));
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.sg-strategy-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.sg-strategy-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  padding: 7px 10px;
+  border: 1px solid var(--sg-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--sg-fg);
+  cursor: pointer;
+}
+
+.sg-strategy-btn:hover:not(:disabled) {
+  background: var(--sg-row-hover);
+  border-color: var(--vscode-focusBorder, var(--sg-border));
+}
+
+.sg-strategy-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.sg-strategy-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sg-strategy-detail {
+  font-size: 11px;
+  color: var(--sg-fg-dim);
+  font-family: var(--sg-mono);
+}

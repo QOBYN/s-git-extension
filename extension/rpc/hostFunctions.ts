@@ -44,17 +44,6 @@ export interface HostFunctionDeps {
   shell: ShellPort;
 }
 
-/**
- * Nhóm hàm P2 chưa hiện thực ném lỗi này — webview P0/P1 không gọi tới;
- * nếu gọi nhầm thì lỗi phải rõ ràng thay vì im lặng sai.
- */
-class NotImplementedError extends Error {
-  constructor(feature: string, phase: string) {
-    super(`${feature} chưa hiện thực — theo lộ trình ${phase} trong docs/design/spec.md`);
-    this.name = 'NotImplementedError';
-  }
-}
-
 export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
   const { repoManager, git, stateReader, runner, cache, panelOpener, shell } = deps;
 
@@ -174,13 +163,14 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
       await writeFile(absPath, content, 'utf8');
     },
 
-    // ---- merge / rebase (P2 — abort/continue làm trước để phục vụ banner trạng thái) ----
-    async merge() {
-      throw new NotImplementedError('Merge', 'P2');
-    },
-    async rebase() {
-      throw new NotImplementedError('Rebase', 'P2');
-    },
+    // ---- remote (P2) ----
+    fetch: (repoRoot) => git.fetch(repoRoot),
+    pull: (repoRoot) => git.pull(repoRoot),
+    push: (repoRoot) => git.push(repoRoot),
+
+    // ---- merge / rebase (P2) ----
+    merge: (repoRoot, target, strategy) => git.merge(repoRoot, target, strategy),
+    rebase: (repoRoot, onto) => git.rebase(repoRoot, onto),
 
     async abortOperation(repoRoot) {
       const activity = await currentActivity(repoRoot);
