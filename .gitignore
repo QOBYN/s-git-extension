@@ -4,3 +4,8 @@ dist/
 .vite/
 .DS_Store
 .claude/settings.local.json
+
+# Ảnh chụp SmartGit (Syntevo) dùng để phân tích thiết kế — giữ ở máy,
+# không đưa lên repo: bản quyền ảnh thuộc Syntevo và nó là bằng chứng
+# hình ảnh bất lợi nếu có tranh chấp nhãn hiệu.
+docs/screenshots/
