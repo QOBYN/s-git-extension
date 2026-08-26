@@ -236,6 +236,19 @@ export class GitService {
     await this.runner.run(root, ['tag', name, oid], { exclusive: true });
   }
 
+  /** Xoá nhánh AN TOÀN (-d): git tự từ chối nhánh chưa merge / đang checkout. */
+  async deleteBranch(root: string, name: string): Promise<void> {
+    await this.runner.run(root, ['branch', '-d', '--', name], { exclusive: true });
+  }
+
+  async renameBranch(root: string, oldName: string, newName: string): Promise<void> {
+    await this.runner.run(root, ['branch', '-m', '--', oldName, newName], { exclusive: true });
+  }
+
+  async deleteTag(root: string, name: string): Promise<void> {
+    await this.runner.run(root, ['tag', '-d', name], { exclusive: true });
+  }
+
   /** Stage 1 hunk: patch unified diff qua stdin — chức năng đinh của P1 (spec 2.1). */
   async stageHunk(root: string, patch: string): Promise<void> {
     await this.runner.run(root, ['apply', '--cached', '-'], { stdin: patch, exclusive: true });

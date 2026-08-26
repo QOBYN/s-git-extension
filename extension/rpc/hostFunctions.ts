@@ -130,6 +130,9 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
     checkout: (repoRoot, ref) => git.checkout(repoRoot, ref),
     createBranch: (repoRoot, name, oid) => git.createBranch(repoRoot, name, oid),
     createTag: (repoRoot, name, oid) => git.createTag(repoRoot, name, oid),
+    deleteBranch: (repoRoot, name) => git.deleteBranch(repoRoot, name),
+    renameBranch: (repoRoot, oldName, newName) => git.renameBranch(repoRoot, oldName, newName),
+    deleteTag: (repoRoot, name) => git.deleteTag(repoRoot, name),
 
     async openFile(repoRoot, relPath) {
       shell.openFile(repoRoot, relPath);

@@ -7,20 +7,75 @@
 // Mọi click đều mở/reveal panel qua host.openPanel — không cần chạy lệnh tay.
 
 import { useEffect, useState } from 'react';
-import type { FileChange, RefInfo, RepoInfo } from '../../shared/types';
+import type { RefInfo, RepoInfo } from '../../shared/types';
 import { childFolders } from '../../shared/folders';
+import { ContextMenu, type MenuState } from '../components/ContextMenu';
+import { PromptModal } from '../components/PromptModal';
 import { host } from '../rpc';
 import { useRepoStore } from '../store/repoStore';
+import { copyText } from '../utils/clipboard';
+
+/** Modal đổi tên nhánh (context menu sidebar). */
+interface RenamePrompt {
+  repoRoot: string;
+  oldName: string;
+}
 
 type SidebarTab = 'workingTree' | 'git';
 
 export function SidebarScreen() {
   const store = useRepoStore();
   const [tab, setTab] = useState<SidebarTab>('workingTree');
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const [renamePrompt, setRenamePrompt] = useState<RenamePrompt | null>(null);
 
   useEffect(() => {
     void useRepoStore.getState().initSidebar();
   }, []);
+
+  /** Context menu nhánh/tag — cùng pattern menu commit: disable ≠ ẩn, hint bên phải. */
+  const openRefMenu = (event: React.MouseEvent, repo: RepoInfo, ref: RefInfo) => {
+    event.preventDefault();
+    const remoteShort = ref.kind === 'remote' ? ref.name.slice(ref.name.indexOf('/') + 1) : null;
+    setMenu({
+      x: event.clientX,
+      y: event.clientY,
+      entries: [
+        {
+          label: ref.kind === 'remote' ? 'Checkout Tracking Branch' : 'Check Out',
+          hint: '⌘G',
+          disabled: ref.kind === 'tag' ? false : ref.isHead,
+          onClick: () =>
+            void store.sidebarCheckout(repo.root, remoteShort ?? ref.name),
+        },
+        {
+          label: 'Open History',
+          onClick: () => void host.openPanel(repo.root, 'history', null, ref.name),
+        },
+        'sep',
+        {
+          label: 'Rename…',
+          hint: 'F2',
+          disabled: ref.kind !== 'local',
+          onClick: () => setRenamePrompt({ repoRoot: repo.root, oldName: ref.name }),
+        },
+        {
+          label: ref.kind === 'tag' ? 'Delete Tag' : 'Delete Branch',
+          disabled: ref.kind === 'remote' || (ref.kind === 'local' && ref.isHead),
+          onClick: () =>
+            void store.sidebarGitOp(
+              () =>
+                ref.kind === 'tag'
+                  ? host.deleteTag(repo.root, ref.name)
+                  : host.deleteBranch(repo.root, ref.name),
+              `Deleted '${ref.name}'.`,
+            ),
+        },
+        'sep',
+        { label: 'Copy Name', onClick: () => copyText(ref.name) },
+      ],
+    });
+  };
 
   // Submodule là repo có root nằm trong root của repo khác — hiện lồng trong cha.
   const topLevelRepos = store.repos.filter(
@@ -56,12 +111,34 @@ export function SidebarScreen() {
           <>
             <GitSearchBar />
             {topLevelRepos.map((repo) => (
-              <RepoGit key={repo.root} repo={repo} submodules={submodulesOf(repo)} />
+              <RepoGit
+                key={repo.root}
+                repo={repo}
+                submodules={submodulesOf(repo)}
+                onRefMenu={openRefMenu}
+              />
             ))}
           </>
         )}
       </div>
       {store.error !== null && <div className="sg-error">{store.error}</div>}
+
+      {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {renamePrompt && (
+        <PromptModal
+          title={`Rename branch '${renamePrompt.oldName}'`}
+          placeholder="new branch name"
+          actionLabel="Rename"
+          initialValue={renamePrompt.oldName}
+          onSubmit={(newName) =>
+            void store.sidebarGitOp(
+              () => host.renameBranch(renamePrompt.repoRoot, renamePrompt.oldName, newName),
+              `Renamed to '${newName}'.`,
+            )
+          }
+          onClose={() => setRenamePrompt(null)}
+        />
+      )}
     </div>
   );
 }
@@ -191,7 +268,15 @@ function GitSearchBar() {
   );
 }
 
-function RepoGit({ repo, submodules }: { repo: RepoInfo; submodules: RepoInfo[] }) {
+function RepoGit({
+  repo,
+  submodules,
+  onRefMenu,
+}: {
+  repo: RepoInfo;
+  submodules: RepoInfo[];
+  onRefMenu(event: React.MouseEvent, repo: RepoInfo, ref: RefInfo): void;
+}) {
   const allRefs = useRepoStore((s) => s.refsByRepo[repo.root]) ?? [];
   const filter = useRepoStore((s) => s.sidebarRefFilter).toLowerCase();
   const [collapsed, setCollapsed] = useState(false);
@@ -223,7 +308,14 @@ function RepoGit({ repo, submodules }: { repo: RepoInfo; submodules: RepoInfo[] 
         <>
           <GitSection title="Local Branches" count={locals.length} defaultOpen>
             {locals.map((ref) => (
-              <RefRow key={ref.fullName} repo={repo} refInfo={ref} display={ref.name} depth={2} />
+              <RefRow
+                key={ref.fullName}
+                repo={repo}
+                refInfo={ref}
+                display={ref.name}
+                depth={2}
+                onContextMenu={onRefMenu}
+              />
             ))}
           </GitSection>
 
@@ -236,6 +328,7 @@ function RepoGit({ repo, submodules }: { repo: RepoInfo; submodules: RepoInfo[] 
                   refInfo={ref}
                   display={ref.name.slice(remote.length + 1)}
                   depth={2}
+                  onContextMenu={onRefMenu}
                 />
               ))}
             </GitSection>
@@ -244,7 +337,14 @@ function RepoGit({ repo, submodules }: { repo: RepoInfo; submodules: RepoInfo[] 
           {tags.length > 0 && (
             <GitSection title="Tags" count={tags.length}>
               {tags.map((ref) => (
-                <RefRow key={ref.fullName} repo={repo} refInfo={ref} display={ref.name} depth={2} />
+                <RefRow
+                  key={ref.fullName}
+                  repo={repo}
+                  refInfo={ref}
+                  display={ref.name}
+                  depth={2}
+                  onContextMenu={onRefMenu}
+                />
               ))}
             </GitSection>
           )}
@@ -301,11 +401,13 @@ function RefRow({
   refInfo,
   display,
   depth,
+  onContextMenu,
 }: {
   repo: RepoInfo;
   refInfo: RefInfo;
   display: string;
   depth: number;
+  onContextMenu(event: React.MouseEvent, repo: RepoInfo, ref: RefInfo): void;
 }) {
   const store = useRepoStore();
   return (
@@ -318,6 +420,7 @@ function RefRow({
           : `${refInfo.fullName} — click: open history`
       }
       onClick={() => void host.openPanel(repo.root, 'history', null, refInfo.name)}
+      onContextMenu={(e) => onContextMenu(e, repo, refInfo)}
       onDoubleClick={
         refInfo.kind === 'local' ? () => void store.sidebarCheckout(repo.root, refInfo.name) : undefined
       }

@@ -77,6 +77,12 @@ export interface HostFunctions {
   createBranch(repoRoot: string, name: string, oid: string): Promise<void>;
   createTag(repoRoot: string, name: string, oid: string): Promise<void>;
 
+  // ---- context menu nhánh/tag ở sidebar ----
+  /** `git branch -d` — git tự chặn nhánh chưa merge / nhánh hiện tại (an toàn có sẵn). */
+  deleteBranch(repoRoot: string, name: string): Promise<void>;
+  renameBranch(repoRoot: string, oldName: string, newName: string): Promise<void>;
+  deleteTag(repoRoot: string, name: string): Promise<void>;
+
   // ---- context menu file (ui-analysis G) — hành động phía VSCode ----
   /** Mở file bằng editor VSCode thường ("Open in Editor" — đảo chiều "Open in VSCode" của SmartGit). */
   openFile(repoRoot: string, relPath: string): Promise<void>;

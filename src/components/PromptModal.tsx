@@ -7,15 +7,27 @@ interface Props {
   title: string;
   placeholder: string;
   actionLabel: string;
+  /** Giá trị điền sẵn (vd rename: tên hiện tại). */
+  initialValue?: string;
   onSubmit(value: string): void;
   onClose(): void;
 }
 
-export function PromptModal({ title, placeholder, actionLabel, onSubmit, onClose }: Props) {
-  const [value, setValue] = useState('');
+export function PromptModal({
+  title,
+  placeholder,
+  actionLabel,
+  initialValue,
+  onSubmit,
+  onClose,
+}: Props) {
+  const [value, setValue] = useState(initialValue ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => inputRef.current?.focus(), []);
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
 
   const submit = () => {
     const trimmed = value.trim();

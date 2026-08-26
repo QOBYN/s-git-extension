@@ -216,6 +216,31 @@ describe('GitService — thao tác trạng thái (merge/rebase flow, spec 2.4)',
   });
 });
 
+describe('GitService — thao tác nhánh/tag từ sidebar', () => {
+  it('deleteBranch dùng -d (an toàn) + chắn tên bằng "--"', async () => {
+    const runner = new FakeGitRunner(() => '');
+    await new GitService(runner).deleteBranch('/repo', 'feat/x');
+
+    const call = runner.callsOf('branch')[0];
+    expect(call.args).toEqual(['branch', '-d', '--', 'feat/x']);
+    expect(call.opts.exclusive).toBe(true);
+  });
+
+  it('renameBranch dùng -m với đủ tên cũ/mới', async () => {
+    const runner = new FakeGitRunner(() => '');
+    await new GitService(runner).renameBranch('/repo', 'old', 'new');
+
+    expect(runner.callsOf('branch')[0].args).toEqual(['branch', '-m', '--', 'old', 'new']);
+  });
+
+  it('deleteTag dùng tag -d', async () => {
+    const runner = new FakeGitRunner(() => '');
+    await new GitService(runner).deleteTag('/repo', 'v1.0');
+
+    expect(runner.callsOf('tag')[0].args).toEqual(['tag', '-d', 'v1.0']);
+  });
+});
+
 describe('GitService — truy vấn phụ', () => {
   it('isRepo trả false khi rev-parse lỗi (thư mục thường)', async () => {
     const runner = new FakeGitRunner(() => new GitError('rev-parse', 128, 'not a git repository'));

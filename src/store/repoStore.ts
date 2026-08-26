@@ -100,6 +100,8 @@ interface RepoStoreState {
   loadAllStatuses(): Promise<void>;
   /** Sidebar: checkout nhánh của 1 repo bất kỳ (không cần activeRepo). */
   sidebarCheckout(repoRoot: string, name: string): Promise<void>;
+  /** Sidebar: chạy 1 thao tác git bất kỳ + refresh refs/status/repos. */
+  sidebarGitOp(op: () => Promise<void>, successMessage: string): Promise<void>;
   setCommitSearch(search: string | null): void;
   setSidebarRefFilter(filter: string): void;
   setCommitMessage(message: string): void;
@@ -329,15 +331,20 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     },
 
     async sidebarCheckout(repoRoot, name) {
+      await get().sidebarGitOp(() => host.checkout(repoRoot, name), `Checked out '${name}'.`);
+    },
+
+    /** Khuôn chung cho thao tác git từ sidebar: chạy → báo lỗi/thành công → refresh. */
+    async sidebarGitOp(op, successMessage) {
       set({ error: null });
       try {
-        await host.checkout(repoRoot, name);
-        set({ statusMessage: `Checked out '${name}'.` });
+        await op();
+        set({ statusMessage: successMessage });
       } catch (error) {
         set({ error: String(error) });
       }
       await Promise.all([get().loadAllRefs(), get().loadAllStatuses()]);
-      // Danh sách repo cũng đổi (branch hiển thị trên header).
+      // Danh sách repo cũng có thể đổi (tên nhánh trên header).
       set({ repos: await host.listRepos() });
     },
 
