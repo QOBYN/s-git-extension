@@ -80,7 +80,7 @@ export function HistoryScreen() {
     });
   };
 
-  // Search commit đến từ Ô SEARCH Ở SIDEBAR (navigate) — lọc client-side trang đã tải.
+  // Ô search commit của màn History (header graph) — lọc client-side trang đã tải.
   const visibleCommits = useMemo(() => {
     const needle = (store.commitSearch ?? '').trim().toLowerCase();
     if (needle === '') {
@@ -118,28 +118,25 @@ export function HistoryScreen() {
     <>
       <div className="sg-main">
         <div className="sg-graph-column">
-          {/* Nhánh + filter + search đã dời ra sidebar VSCode — header chỉ còn
-              chip trạng thái lọc (kèm nút bỏ lọc), ẩn khi không lọc gì. */}
-          {(store.historyRef !== null || store.commitSearch) && (
-            <div className="sg-graph-header">
-              {store.historyRef !== null && (
-                <span className="sg-ref-badge head" title="Graph filtered to this ref">
-                  {store.historyRef}
-                  <button className="sg-chip-clear" onClick={() => void store.setHistoryRef(null)}>
-                    ✕
-                  </button>
-                </span>
-              )}
-              {store.commitSearch && (
-                <span className="sg-ref-badge" title="Commit search (from sidebar)">
-                  🔍 {store.commitSearch}
-                  <button className="sg-chip-clear" onClick={() => store.setCommitSearch(null)}>
-                    ✕
-                  </button>
-                </span>
-              )}
-            </div>
-          )}
+          {/* Cây nhánh nằm ở sidebar VSCode; header của graph giữ chip lọc ref
+              + Ô SEARCH COMMIT của riêng màn History (lọc trang đã tải tức thì). */}
+          <div className="sg-graph-header">
+            {store.historyRef !== null && (
+              <span className="sg-ref-badge head" title="Graph filtered to this ref">
+                {store.historyRef}
+                <button className="sg-chip-clear" onClick={() => void store.setHistoryRef(null)}>
+                  ✕
+                </button>
+              </span>
+            )}
+            <span className="sg-diff-spacer" />
+            <input
+              className="sg-filter-input inline"
+              placeholder="Search commits (message · author · hash)"
+              value={store.commitSearch ?? ''}
+              onChange={(e) => store.setCommitSearch(e.target.value || null)}
+            />
+          </div>
 
           <div className="sg-commit-list" ref={listRef} onScroll={slice.onScroll}>
             {visibleCommits.length === 0 && !store.loading && store.error === null && (

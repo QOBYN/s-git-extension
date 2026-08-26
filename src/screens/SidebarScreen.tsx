@@ -239,10 +239,9 @@ function RepoWorkingTree({ repo }: { repo: RepoInfo }) {
 
 // ================= tab 2: Git (branches/remotes/tags/submodules) =================
 
-/** Filter nhánh (lọc cây bên dưới) + search commit (Enter → panel History). */
+/** Filter nhánh/tag — sidebar CHỈ lọc cây ref; search commit nằm trong panel History. */
 function GitSearchBar() {
   const store = useRepoStore();
-  const [search, setSearch] = useState('');
 
   return (
     <div className="sg-git-search">
@@ -251,18 +250,6 @@ function GitSearchBar() {
         placeholder="Filter branches & tags"
         value={store.sidebarRefFilter}
         onChange={(e) => store.setSidebarRefFilter(e.target.value)}
-      />
-      <input
-        className="sg-filter-input"
-        placeholder="Search commits (Enter)"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            // Panel giữ repo hiện tại, chuyển History và áp search.
-            void host.openPanel(null, 'history', undefined, undefined, search.trim() || null);
-          }
-        }}
       />
     </div>
   );
