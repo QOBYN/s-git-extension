@@ -523,8 +523,8 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     async stageCurrentHunk(change) {
       const selection = get().workingSelection;
       const diff = get().workingDiff;
-      if (selection === null || diff === null) {
-        return;
+      if (selection === null || diff === null || diff.encoding !== 'text') {
+        return; // hunk chỉ có nghĩa với diff text (UI cũng đã ẩn nút)
       }
       const patch = buildHunkPatch({
         path: selection.file.path,
@@ -540,7 +540,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     async revertCurrentHunk(change) {
       const selection = get().workingSelection;
       const diff = get().workingDiff;
-      if (selection === null || diff === null) {
+      if (selection === null || diff === null || diff.encoding !== 'text') {
         return;
       }
       // Diff unstaged là index↔working; reverse-apply lên WORKING TREE xoá hunk đó.
@@ -556,8 +556,8 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
 
     async saveWorkingEdit(content) {
       const selection = get().workingSelection;
-      if (selection === null) {
-        return;
+      if (selection === null || get().workingDiff?.encoding !== 'text') {
+        return; // không ghi đè file nhị phân bằng buffer text
       }
       await mutate(
         () => host.saveWorkingFile(get().activeRepoRoot!, selection.file.path, content),
@@ -570,7 +570,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     async unstageCurrentHunk(change) {
       const selection = get().workingSelection;
       const diff = get().workingDiff;
-      if (selection === null || diff === null) {
+      if (selection === null || diff === null || diff.encoding !== 'text') {
         return;
       }
       // Diff staged là HEAD↔index; reverse-apply patch này gỡ hunk khỏi index.

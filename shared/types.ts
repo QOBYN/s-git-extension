@@ -121,8 +121,12 @@ export interface DiffTarget {
 export interface DiffPayload {
   original: string;
   modified: string;
-  /** Gợi ý ngôn ngữ cho Monaco, suy từ đuôi file. */
-  language?: string;
+  /**
+   * 'text' = chuỗi UTF-8 (diff Monaco);
+   * 'base64' = nội dung nhị phân (ảnh/binary — webview render theo loại file).
+   * Host quyết định: đuôi file nhị phân đã biết HOẶC có byte NUL trong nội dung.
+   */
+  encoding: 'text' | 'base64';
 }
 
 // ---- thao tác ghi ----

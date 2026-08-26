@@ -9,6 +9,7 @@ import type {
   PanelMode,
   WorkingTreeStatus,
 } from '../../shared/types';
+import { hasBinaryContent, isKnownBinaryExtension } from '../services/binaryDetect';
 import type { CacheIndex } from '../services/cacheIndex';
 import type { GitService } from '../services/gitService';
 import type { RepoManager } from '../services/repoManager';
@@ -114,11 +115,25 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
     },
 
     async getDiff(repoRoot, target): Promise<DiffPayload> {
-      const [original, modified] = await Promise.all([
+      // Đọc base64 thống nhất rồi mới quyết định text/binary — tránh đọc 2 lần.
+      const [originalB64, modifiedB64] = await Promise.all([
         readSide(repoRoot, target, 'original'),
         readSide(repoRoot, target, 'modified'),
       ]);
-      return { original, modified };
+      const originalBuffer = Buffer.from(originalB64, 'base64');
+      const modifiedBuffer = Buffer.from(modifiedB64, 'base64');
+      const binary =
+        isKnownBinaryExtension(target.path) ||
+        hasBinaryContent(originalBuffer) ||
+        hasBinaryContent(modifiedBuffer);
+      if (binary) {
+        return { original: originalB64, modified: modifiedB64, encoding: 'base64' };
+      }
+      return {
+        original: originalBuffer.toString('utf8'),
+        modified: modifiedBuffer.toString('utf8'),
+        encoding: 'text',
+      };
     },
 
     // ---- ghi (P1) ----
@@ -200,6 +215,7 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
    * File không tồn tại ở 1 phía (added/deleted) trả chuỗi rỗng — Monaco render
    * thành diff toàn thêm/toàn xoá, đúng ngữ nghĩa.
    */
+  /** Trả BASE64 (an toàn nhị phân); getDiff quyết định decode utf8 hay giữ nguyên. */
   async function readSide(
     repoRoot: string,
     target: DiffTarget,
@@ -210,7 +226,7 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
       return readWorkingFile(repoRoot, target.path);
     }
     try {
-      return await runner.run(repoRoot, ['show', spec]);
+      return await runner.run(repoRoot, ['show', spec], { encoding: 'base64' });
     } catch (error) {
       if (error instanceof GitError && isMissingPathError(error)) {
         return '';
@@ -241,7 +257,7 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
     const { readFile } = await import('node:fs/promises');
     const { join } = await import('node:path');
     try {
-      return await readFile(join(repoRoot, relPath), 'utf8');
+      return await readFile(join(repoRoot, relPath), 'base64');
     } catch {
       return ''; // file đã xoá khỏi working tree
     }

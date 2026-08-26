@@ -6,7 +6,11 @@ import { useRef, useState } from 'react';
 import { useEffect } from 'react';
 import type { DiffPayload } from '../../shared/types';
 import { useDiffPrefs } from '../store/diffPrefsStore';
+import { diffViewKind } from '../utils/fileKinds';
 import type { LineChange } from '../utils/patchBuilder';
+import { BinaryDiffNote } from './diff/BinaryDiffNote';
+import { CsvDiffView, useCsvTable } from './diff/CsvDiffView';
+import { ImageDiffView } from './diff/ImageDiffView';
 import { DiffView, type DiffStats, type DiffViewHandle } from './DiffView';
 
 interface Props {
@@ -46,7 +50,18 @@ export function DiffPanel({
   const [dirty, setDirty] = useState(false);
   /** Revert phá huỷ thay đổi — bước 1 bấm chuyển nút thành "Confirm?", 3s tự hoàn. */
   const [confirmRevert, setConfirmRevert] = useState(false);
+  /** CSV: Table (mặc định) ↔ Text (Monaco). */
+  const [csvMode, setCsvMode] = useState<'table' | 'text'>('table');
   const viewRef = useRef<DiffViewHandle>(null);
+
+  // Loại view theo file: text / image / csv / binary (host quyết text↔base64).
+  const kind = diff !== null ? diffViewKind(path, diff) : 'text';
+  const csvTable = useCsvTable(path, kind === 'csv' ? diff : null);
+  // Bảng CSV không dựng được (file quá lớn) → dùng Monaco như text thường.
+  const showCsvTable = kind === 'csv' && csvMode === 'table' && csvTable !== null;
+  const showTextView = diff !== null && (kind === 'text' || (kind === 'csv' && !showCsvTable));
+  /** Toolbar chữ (Unified/SbS/Compact/…) chỉ có nghĩa khi đang render Monaco. */
+  const textControls = showTextView;
 
   useEffect(() => {
     if (!confirmRevert) {
@@ -92,7 +107,7 @@ export function DiffPanel({
         <span className="sg-diff-file" title={path}>
           Changes of {fileName(path)} <span className="sg-diff-kind">({kindLabel})</span>
         </span>
-        {stats !== null && (
+        {textControls && stats !== null && (
           <span className="sg-diff-stats">
             {stats.addedLines > 0 && <span className="stat-added">+{stats.addedLines}</span>}
             {stats.removedLines > 0 && <span className="stat-removed">−{stats.removedLines}</span>}
@@ -102,6 +117,25 @@ export function DiffPanel({
           </span>
         )}
         <span className="sg-diff-spacer" />
+        {kind === 'csv' && csvTable !== null && (
+          <>
+            <button
+              className={`sg-tool${csvMode === 'table' ? ' active' : ''}`}
+              onClick={() => setCsvMode('table')}
+            >
+              Table
+            </button>
+            <button
+              className={`sg-tool${csvMode === 'text' ? ' active' : ''}`}
+              onClick={() => setCsvMode('text')}
+            >
+              Text
+            </button>
+            <span className="sg-tool-sep" />
+          </>
+        )}
+        {textControls && (
+          <>
         <button
           className={`sg-tool${!options.sideBySide ? ' active' : ''}`}
           onClick={() => options.setOption('sideBySide', false)}
@@ -141,7 +175,9 @@ export function DiffPanel({
         <button className="sg-tool" title="Next change" onClick={() => jump('next')}>
           ↓
         </button>
-        {onStageHunk && stats !== null && stats.changeCount > 0 && (
+          </>
+        )}
+        {textControls && onStageHunk && stats !== null && stats.changeCount > 0 && (
           <>
             <span className="sg-tool-sep" />
             <button
@@ -153,7 +189,7 @@ export function DiffPanel({
             </button>
           </>
         )}
-        {onUnstageHunk && stats !== null && stats.changeCount > 0 && (
+        {textControls && onUnstageHunk && stats !== null && stats.changeCount > 0 && (
           <>
             <span className="sg-tool-sep" />
             <button
@@ -165,7 +201,7 @@ export function DiffPanel({
             </button>
           </>
         )}
-        {onRevertHunk && stats !== null && stats.changeCount > 0 && (
+        {textControls && onRevertHunk && stats !== null && stats.changeCount > 0 && (
           <button
             className={`sg-tool danger${confirmRevert ? ' confirming' : ''}`}
             title="Bỏ hunk hiện tại khỏi working tree (mất thay đổi đó!) — bấm lần nữa để xác nhận"
@@ -174,7 +210,7 @@ export function DiffPanel({
             {confirmRevert ? 'Confirm revert?' : 'Revert Hunk'}
           </button>
         )}
-        {editable && (
+        {textControls && editable && (
           <>
             <span className="sg-tool-sep" />
             <button
@@ -190,7 +226,10 @@ export function DiffPanel({
       </div>
 
       {loading && <div className="sg-diff-loading">Loading diff…</div>}
-      {diff && (
+      {diff !== null && kind === 'image' && <ImageDiffView path={path} diff={diff} />}
+      {diff !== null && kind === 'binary' && <BinaryDiffNote diff={diff} />}
+      {diff !== null && showCsvTable && csvTable !== null && <CsvDiffView table={csvTable} />}
+      {showTextView && diff !== null && (
         <DiffView
           ref={viewRef}
           original={diff.original}

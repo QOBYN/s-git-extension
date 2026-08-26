@@ -16,6 +16,8 @@ export interface GitRunOptions {
   stdin?: string;
   /** Chặn output quá lớn; mặc định DEFAULT_GIT_MAX_OUTPUT_BYTES. */
   maxOutputBytes?: number;
+  /** 'base64' cho output nhị phân (git show file ảnh…); mặc định utf8. */
+  encoding?: 'utf8' | 'base64';
 }
 
 export interface GitRunner {
@@ -111,7 +113,7 @@ export class SpawnGitRunner implements GitRunner {
         }
         settled = true;
         if (code === 0) {
-          resolve(Buffer.concat(stdout).toString('utf8'));
+          resolve(Buffer.concat(stdout).toString(opts.encoding ?? 'utf8'));
         } else {
           reject(new GitError(args.join(' '), code ?? -1, Buffer.concat(stderr).toString('utf8')));
         }
