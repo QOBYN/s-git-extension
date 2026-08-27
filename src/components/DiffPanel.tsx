@@ -11,6 +11,7 @@ import type { LineChange } from '../utils/patchBuilder';
 import { BinaryDiffNote } from './diff/BinaryDiffNote';
 import { CsvDiffView, useCsvTable } from './diff/CsvDiffView';
 import { ImageDiffView } from './diff/ImageDiffView';
+import { SubmoduleDiffView } from './diff/SubmoduleDiffView';
 import { DiffView, type DiffStats, type DiffViewHandle } from './DiffView';
 
 interface Props {
@@ -139,7 +140,14 @@ export function DiffPanel({
     <section className="sg-diff-panel" style={{ height }}>
       <div className="sg-diff-toolbar">
         <span className="sg-diff-file" title={path}>
-          Changes of {fileName(path)} <span className="sg-diff-kind">({kindLabel})</span>
+          Changes of {fileName(path)}{' '}
+          <span className="sg-diff-kind">
+            {/* Status có thể không biết path là submodule (vd repo lồng untracked)
+                — host đã xác nhận qua payload thì nói rõ trên header. */}
+            ({kind === 'submodule' && !kindLabel.toLowerCase().includes('submodule')
+              ? `Submodule · ${kindLabel}`
+              : kindLabel})
+          </span>
         </span>
         {textControls && stats !== null && (
           <span className="sg-diff-stats">
@@ -260,6 +268,9 @@ export function DiffPanel({
       </div>
 
       {loading && <div className="sg-diff-loading">Loading diff…</div>}
+      {diff?.submodule !== undefined && kind === 'submodule' && (
+        <SubmoduleDiffView info={diff.submodule} />
+      )}
       {diff !== null && kind === 'image' && <ImageDiffView path={path} diff={diff} />}
       {diff !== null && kind === 'binary' && <BinaryDiffNote diff={diff} />}
       {diff !== null && showCsvTable && csvTable !== null && <CsvDiffView table={csvTable} />}

@@ -3,10 +3,13 @@
 // nhận qua GitServiceOptions (adapter sẽ nối với VSCode settings).
 
 import { createHash } from 'node:crypto';
-import { DEFAULT_LOG_PAGE_SIZE } from '../../shared/constants';
+import { join } from 'node:path';
+import { DEFAULT_LOG_PAGE_SIZE, SUBMODULE_PREVIEW_COMMITS } from '../../shared/constants';
 import type {
   CheckoutOptions,
   CommitFileChange,
+  CommitInfo,
+  DiffTarget,
   LogOptions,
   LogPage,
   MergeResult,
@@ -16,6 +19,7 @@ import type {
   RefInfo,
   RemoteInfo,
   ResetMode,
+  SubmoduleDiffInfo,
 } from '../../shared/types';
 import { parseCommitFiles } from './commitFilesParser';
 import { foldersFromPaths } from '../../shared/folders';
@@ -186,6 +190,208 @@ export class GitService {
     }
   }
 
+  /**
+   * So sánh con trỏ submodule cho DiffTarget (getDiff gọi khi `git show :path`
+   * fail "bad object" — gitlink không phải blob). Trả null nếu path KHÔNG phải
+   * gitlink → caller ném lại lỗi gốc. Chi tiết commit/ahead/behind đọc từ repo
+   * con là best-effort: submodule chưa init hoặc thiếu object thì chỉ có SHA.
+   */
+  async getSubmoduleDiff(root: string, target: DiffTarget): Promise<SubmoduleDiffInfo | null> {
+    const { kind, path } = target;
+    let oldOid: string | null;
+    let newOid: string | null;
+    let dirty = false;
+    switch (kind) {
+      case 'workingTree':
+        oldOid = await this.gitlinkInIndex(root, path);
+        newOid = await this.submoduleWorkingOid(root, path);
+        dirty = await this.submoduleContentDirty(root, path);
+        if (newOid === null) {
+          // Thư mục là 1 repo git LỒNG chưa đăng ký submodule (case "add mới
+          // 1 git": untracked, `git show :path` trả rỗng chứ không "bad object").
+          const nested = await this.nestedRepoInfo(root, path);
+          if (nested !== null) {
+            newOid = nested.head;
+            dirty = dirty || nested.dirty;
+          }
+        }
+        break;
+      case 'index':
+        oldOid = await this.gitlinkInTree(root, 'HEAD', path);
+        newOid = await this.gitlinkInIndex(root, path);
+        break;
+      case 'commit':
+        oldOid = await this.gitlinkInTree(root, `${target.oid}^`, path);
+        newOid = await this.gitlinkInTree(root, target.oid!, path);
+        break;
+    }
+    if (oldOid === null && newOid === null) {
+      return null; // không phải submodule — để caller ném lại lỗi gốc của git show
+    }
+
+    const subRoot = join(root, path);
+    const [oldCommit, newCommit] = await Promise.all([
+      this.submoduleCommitInfo(subRoot, oldOid),
+      this.submoduleCommitInfo(subRoot, newOid),
+    ]);
+    // Preview history giữa 2 con trỏ; submodule mới thêm thì lấy history gần nhất.
+    let ahead: CommitInfo[] = [];
+    let behind: CommitInfo[] = [];
+    let baseOid: string | null = null;
+    if (oldOid !== null && newOid !== null && oldOid !== newOid) {
+      [ahead, behind, baseOid] = await Promise.all([
+        this.submoduleLog(subRoot, `${oldOid}..${newOid}`),
+        this.submoduleLog(subRoot, `${newOid}..${oldOid}`),
+        this.submoduleMergeBase(subRoot, oldOid, newOid),
+      ]);
+      // Gốc chung chỉ có ý nghĩa khi PHÂN KỲ — fast-forward thì chính old/new
+      // đã là gốc, view dùng con trỏ đó làm dòng neo.
+      if (baseOid === oldOid || baseOid === newOid) {
+        baseOid = null;
+      }
+    } else if (oldOid === null && newOid !== null) {
+      ahead = await this.submoduleLog(subRoot, newOid);
+    } else if (newOid === null && oldOid !== null) {
+      behind = await this.submoduleLog(subRoot, oldOid);
+    }
+    return {
+      oldOid,
+      newOid,
+      oldCommit,
+      newCommit,
+      baseOid,
+      baseCommit: await this.submoduleCommitInfo(subRoot, baseOid),
+      ahead: ahead.slice(0, SUBMODULE_PREVIEW_COMMITS),
+      behind: behind.slice(0, SUBMODULE_PREVIEW_COMMITS),
+      aheadTruncated: ahead.length > SUBMODULE_PREVIEW_COMMITS,
+      behindTruncated: behind.length > SUBMODULE_PREVIEW_COMMITS,
+      dirty,
+    };
+  }
+
+  /** SHA gitlink của path trong INDEX (`ls-files -s` mode 160000); null = không phải gitlink. */
+  private async gitlinkInIndex(root: string, path: string): Promise<string | null> {
+    try {
+      const out = await this.runner.run(root, ['ls-files', '-s', '-z', '--', path]);
+      const match = /^160000 ([0-9a-f]+) /.exec(out);
+      return match ? match[1]! : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** SHA gitlink của path trong tree của `rev`; null = rev/path không có hoặc không phải gitlink. */
+  private async gitlinkInTree(root: string, rev: string, path: string): Promise<string | null> {
+    try {
+      const out = await this.runner.run(root, ['ls-tree', '-z', rev, '--', path]);
+      const match = /^160000 commit ([0-9a-f]+)\t/.exec(out);
+      return match ? match[1]! : null;
+    } catch {
+      return null; // rev không tồn tại (vd commit gốc không có parent)
+    }
+  }
+
+  /**
+   * SHA đang checkout THẬT trong working tree của submodule — qua `git submodule
+   * status` của repo CHA (không chạy git trong thư mục con: nếu nó chưa init,
+   * git sẽ leo ngược lên repo cha và trả nhầm HEAD của cha).
+   * Prefix '-' = chưa init → null.
+   */
+  private async submoduleWorkingOid(root: string, path: string): Promise<string | null> {
+    try {
+      const out = await this.runner.run(root, ['submodule', 'status', '--', path]);
+      const match = /^([ +U-])([0-9a-f]+) /.exec(out);
+      return match === null || match[1] === '-' ? null : match[2]!;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Thư mục path có phải GỐC của 1 repo git lồng (chưa đăng ký submodule)?
+   * `--show-prefix` rỗng = cwd chính là gốc repo; khác rỗng = git đã leo ngược
+   * lên repo CHA (thư mục thường) — tuyệt đối không được lấy nhầm HEAD của cha.
+   */
+  private async nestedRepoInfo(
+    root: string,
+    path: string,
+  ): Promise<{ head: string; dirty: boolean } | null> {
+    const subRoot = join(root, path);
+    try {
+      const prefix = (await this.runner.run(subRoot, ['rev-parse', '--show-prefix'])).trim();
+      if (prefix !== '') {
+        return null;
+      }
+      const head = (await this.runner.run(subRoot, ['rev-parse', 'HEAD'])).trim();
+      if (!/^[0-9a-f]+$/.test(head)) {
+        return null;
+      }
+      const status = await this.runner.run(subRoot, ['status', '--porcelain', '-z']);
+      return { head, dirty: status !== '' };
+    } catch {
+      return null; // không phải repo git, thư mục không tồn tại, hoặc chưa có commit
+    }
+  }
+
+  /** Nội dung BÊN TRONG submodule có thay đổi chưa commit (field <sub> = S?M?/S??U)? */
+  private async submoduleContentDirty(root: string, path: string): Promise<boolean> {
+    try {
+      const out = await this.runner.run(root, ['status', '--porcelain=v2', '-z', '--', path]);
+      return out
+        .split('\0')
+        .some((line) => /^[12u] .. S.[MU]|^[12u] .. S..U/.test(line));
+    } catch {
+      return false;
+    }
+  }
+
+  /** Chi tiết 1 commit trong repo con (kèm %D — nhánh/tag trỏ vào nó); best-effort. */
+  private async submoduleCommitInfo(subRoot: string, oid: string | null): Promise<CommitInfo | null> {
+    if (oid === null) {
+      return null;
+    }
+    try {
+      const out = await this.runner.run(subRoot, [
+        'log',
+        '--max-count=1',
+        `--pretty=format:${LOG_FORMAT}`,
+        oid,
+      ]);
+      return parseLog(out)[0] ?? null;
+    } catch {
+      return null; // chưa init / thiếu object — UI vẫn còn SHA để hiển thị
+    }
+  }
+
+  /** Gốc chung của 2 con trỏ trong repo con (`merge-base`) — best-effort. */
+  private async submoduleMergeBase(
+    subRoot: string,
+    oldOid: string,
+    newOid: string,
+  ): Promise<string | null> {
+    try {
+      const out = (await this.runner.run(subRoot, ['merge-base', oldOid, newOid])).trim();
+      return /^[0-9a-f]+$/.test(out) ? out : null;
+    } catch {
+      return null; // không có gốc chung / thiếu object — view bỏ dòng neo
+    }
+  }
+
+  /** Log rút gọn trong repo con cho preview (lấy dư 1 để biết có bị cắt). */
+  private async submoduleLog(subRoot: string, range: string): Promise<CommitInfo[]> {
+    try {
+      const out = await this.runner.run(subRoot, [
+        'log',
+        `--max-count=${SUBMODULE_PREVIEW_COMMITS + 1}`,
+        `--pretty=format:${LOG_FORMAT}`,
+        range,
+      ]);
+      return parseLog(out);
+    } catch {
+      return [];
+    }
+  }
+
   /** Cây thư mục repo (tracked + untracked, bỏ ignored) — sidebar tab Working Tree. */
   async listFolders(root: string): Promise<string[]> {
     const out = await this.runner.run(root, [
@@ -249,7 +455,14 @@ export class GitService {
     const subPaths = await this.listSubmodulePaths(root);
     const syncSubmodules =
       subPaths.length > 0 && (opts.force || !(await this.hasSubmoduleChanges(root)));
-    const args = opts.force ? ['checkout', '--force', ref] : ['checkout', ref];
+    const args = ['checkout'];
+    if (opts.force) {
+      args.push('--force');
+    }
+    if (opts.newBranch !== undefined) {
+      args.push('-b', opts.newBranch); // tạo nhánh mới tại ref rồi đứng trên đó
+    }
+    args.push(ref);
     await this.runner.run(root, args, { exclusive: true });
     if (syncSubmodules) {
       const subArgs = ['submodule', 'update', '--init'];

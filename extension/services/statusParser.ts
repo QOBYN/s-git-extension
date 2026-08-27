@@ -33,25 +33,26 @@ export function parseStatusV2(stdout: string): StatusResult {
         // `1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>` — 8 field rồi tới path
         // (path có thể chứa khoảng trắng nên không split toàn bộ).
         const { fields, rest } = splitFields(token, 8);
-        result.files.push(makeChange(fields[1], rest));
+        result.files.push(makeChange(fields[1], rest, fields[2]));
         break;
       }
       case '2': {
         // `2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <Xscore> <path>` + token kế = origPath.
         const { fields, rest } = splitFields(token, 9);
         const origPath = tokens[++i] ?? '';
-        result.files.push({ ...makeChange(fields[1], rest), origPath });
+        result.files.push({ ...makeChange(fields[1], rest, fields[2]), origPath });
         break;
       }
       case 'u': {
         // `u <XY> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>` — file conflict.
-        const { rest } = splitFields(token, 10);
+        const { fields, rest } = splitFields(token, 10);
         result.files.push({
           path: rest,
           staged: null,
           unstaged: null,
           untracked: false,
           conflicted: true,
+          ...(isSubmodule(fields[2]) ? { submodule: true } : {}),
         });
         break;
       }
@@ -108,14 +109,20 @@ function splitFields(token: string, count: number): { fields: string[]; rest: st
   return { fields, rest: token.slice(start) };
 }
 
+/** Field <sub> của porcelain v2: "N..." = file thường, "S<c><m><u>" = submodule. */
+function isSubmodule(sub: string | undefined): boolean {
+  return sub !== undefined && sub.startsWith('S');
+}
+
 /** XY của porcelain v2: X = trạng thái index (staged), Y = trạng thái working tree. */
-function makeChange(xy: string, path: string): FileChange {
+function makeChange(xy: string, path: string, sub?: string): FileChange {
   return {
     path,
     staged: kindOf(xy[0]),
     unstaged: kindOf(xy[1]),
     untracked: false,
     conflicted: false,
+    ...(isSubmodule(sub) ? { submodule: true } : {}),
   };
 }
 

@@ -173,6 +173,18 @@ describe('GitService — thao tác ghi', () => {
     expect(runner.callsOf('submodule')).toHaveLength(0);
   });
 
+  it('checkout newBranch: tạo nhánh mới tại ref bằng -b (popup Checkout "Nhánh mới")', async () => {
+    const runner = new FakeGitRunner(() => '');
+    const git = new GitService(runner);
+
+    await git.checkout('/repo', 'abc1234', { newBranch: 'feature/x' });
+    await git.checkout('/repo', 'abc1234', { force: true, newBranch: 'feature/y' });
+
+    const [plain, forced] = runner.callsOf('checkout');
+    expect(plain.args).toEqual(['checkout', '-b', 'feature/x', 'abc1234']);
+    expect(forced.args).toEqual(['checkout', '--force', '-b', 'feature/y', 'abc1234']);
+  });
+
   it('checkout repo có submodule + sạch → submodule update --init SAU checkout', async () => {
     const runner = new FakeGitRunner((args) => {
       if (args[0] === 'config') {
@@ -555,5 +567,214 @@ describe('GitService.merge / rebase', () => {
       ['reset', '--hard', 'abc1234'],
     ]);
     expect(runner.callsOf('reset').every((c) => c.opts.exclusive)).toBe(true);
+  });
+});
+
+describe('GitService.getSubmoduleDiff', () => {
+  const OLD = 'a'.repeat(40);
+  const NEW = 'b'.repeat(40);
+
+  /** 1 record log giả theo LOG_FORMAT của repo con. */
+  const rec = (oid: string, subject: string, refs = ''): string =>
+    [oid, '', 'Alice', 'a@x.com', '2026-08-26T09:00:00+07:00', refs, subject].join(F) + R;
+
+  it('workingTree: con trỏ index ↔ con trỏ checkout thật + dirty + preview old..new', async () => {
+    const runner = new FakeGitRunner((args) => {
+      switch (args[0]) {
+        case 'ls-files':
+          return `160000 ${OLD} 0\tlibs/child\0`;
+        case 'submodule':
+          return `+${NEW} libs/child (heads/dev)\n`;
+        case 'status':
+          // Con trỏ lệch (c=C) + nội dung bên trong dirty (m=M).
+          return `1 .M SCM. 160000 160000 160000 ${OLD} ${OLD} libs/child\0`;
+        case 'log':
+          if (args.at(-1) === `${OLD}..${NEW}`) {
+            return rec('c2', 'feat: two') + '\n' + rec('c1', 'feat: one');
+          }
+          if (args.at(-1) === `${NEW}..${OLD}`) {
+            return '';
+          }
+          // --max-count=1 <oid>: chi tiết commit từng phía.
+          return args.at(-1) === OLD ? rec(OLD, 'old tip', 'tag: v1') : rec(NEW, 'new tip');
+        default:
+          return '';
+      }
+    });
+
+    const info = await new GitService(runner).getSubmoduleDiff('/repo', {
+      kind: 'workingTree',
+      path: 'libs/child',
+    });
+
+    expect(info).not.toBeNull();
+    expect(info!.oldOid).toBe(OLD);
+    expect(info!.newOid).toBe(NEW);
+    expect(info!.dirty).toBe(true);
+    expect(info!.oldCommit).toMatchObject({ subject: 'old tip', refs: ['tag: v1'] });
+    expect(info!.newCommit).toMatchObject({ subject: 'new tip' });
+    expect(info!.ahead.map((c) => c.oid)).toEqual(['c2', 'c1']);
+    expect(info!.behind).toEqual([]);
+    expect(info!.aheadTruncated).toBe(false);
+    // Lệnh đọc repo con phải chạy TRONG thư mục submodule.
+    expect(runner.callsOf('log').every((c) => c.cwd === '/repo/libs/child')).toBe(true);
+  });
+
+  it('commit: đọc gitlink từ tree của oid^ và oid qua ls-tree', async () => {
+    const runner = new FakeGitRunner((args) => {
+      if (args[0] === 'ls-tree') {
+        // args: ['ls-tree', '-z', <rev>, '--', <path>]
+        const sha = args[2] === 'deadbeef^' ? OLD : NEW;
+        return `160000 commit ${sha}\tlibs/child\0`;
+      }
+      if (args[0] === 'log') {
+        if (args.at(-1) === `${OLD}..${NEW}`) {
+          return rec('c1', 'between');
+        }
+        return args.at(-1) === `${NEW}..${OLD}` ? '' : rec('x', 'tip');
+      }
+      return '';
+    });
+
+    const info = await new GitService(runner).getSubmoduleDiff('/repo', {
+      kind: 'commit',
+      oid: 'deadbeef',
+      path: 'libs/child',
+    });
+
+    expect(info).toMatchObject({ oldOid: OLD, newOid: NEW, dirty: false });
+    expect(info!.ahead.map((c) => c.oid)).toEqual(['c1']);
+    expect(runner.callsOf('ls-tree').map((c) => c.args[2])).toEqual(['deadbeef^', 'deadbeef']);
+  });
+
+  it('2 con trỏ PHÂN KỲ: trả merge-base làm gốc chung; fast-forward thì base null', async () => {
+    const BASE = 'c'.repeat(40);
+    const makeRunner = (mergeBase: string, behindLog: string) =>
+      new FakeGitRunner((args) => {
+        switch (args[0]) {
+          case 'ls-files':
+            return `160000 ${OLD} 0\tlibs/child\0`;
+          case 'submodule':
+            return ` ${NEW} libs/child (heads/main)\n`;
+          case 'merge-base':
+            return `${mergeBase}\n`;
+          case 'log':
+            if (args.at(-1) === `${OLD}..${NEW}`) {
+              return rec('a1', 'ours');
+            }
+            if (args.at(-1) === `${NEW}..${OLD}`) {
+              return behindLog;
+            }
+            return rec('tip', 'tip');
+          default:
+            return '';
+        }
+      });
+
+    const diverged = await new GitService(makeRunner(BASE, rec('r1', 'theirs'))).getSubmoduleDiff(
+      '/repo',
+      { kind: 'workingTree', path: 'libs/child' },
+    );
+    expect(diverged).toMatchObject({ baseOid: BASE });
+    expect(diverged!.behind.map((c) => c.oid)).toEqual(['r1']);
+
+    // Fast-forward: merge-base chính là OLD → không có gốc riêng (view neo bằng OLD).
+    const ff = await new GitService(makeRunner(OLD, '')).getSubmoduleDiff('/repo', {
+      kind: 'workingTree',
+      path: 'libs/child',
+    });
+    expect(ff).toMatchObject({ baseOid: null, baseCommit: null });
+  });
+
+  it('path KHÔNG phải gitlink trả null — caller ném lại lỗi gốc của git show', async () => {
+    const runner = new FakeGitRunner((args) => {
+      if (args[0] === 'ls-files') {
+        return `100644 ${OLD} 0\tsrc/normal.ts\0`; // blob thường
+      }
+      if (args[0] === 'submodule') {
+        return new GitError('submodule status', 1, 'not a submodule');
+      }
+      return '';
+    });
+
+    const info = await new GitService(runner).getSubmoduleDiff('/repo', {
+      kind: 'workingTree',
+      path: 'src/normal.ts',
+    });
+
+    expect(info).toBeNull();
+  });
+
+  it('repo git LỒNG untracked (add mới 1 git): nhận diện qua --show-prefix, trả trạng thái added', async () => {
+    const runner = new FakeGitRunner((args, cwd) => {
+      switch (args[0]) {
+        case 'ls-files':
+          return ''; // untracked — chưa có trong index
+        case 'submodule':
+          return new GitError('submodule status', 128, 'no submodule mapping found');
+        case 'status':
+          // Parent (porcelain=v2) không có record S; repo con (porcelain) có 1 file dirty.
+          return args[1] === '--porcelain=v2' ? '' : 'M x.ts\0';
+        case 'rev-parse':
+          return args[1] === '--show-prefix' ? '\n' : `${NEW}\n`;
+        case 'log':
+          expect(cwd).toBe('/repo/libs/child');
+          return rec('n2', 'second') + '\n' + rec('n1', 'first');
+        default:
+          return '';
+      }
+    });
+
+    const info = await new GitService(runner).getSubmoduleDiff('/repo', {
+      kind: 'workingTree',
+      path: 'libs/child',
+    });
+
+    expect(info).toMatchObject({ oldOid: null, newOid: NEW, dirty: true });
+    expect(info!.ahead.map((c) => c.oid)).toEqual(['n2', 'n1']); // "sẽ mang vào những commit nào"
+  });
+
+  it('thư mục thường (git leo lên repo cha, --show-prefix khác rỗng) KHÔNG bị nhận nhầm', async () => {
+    const runner = new FakeGitRunner((args) => {
+      switch (args[0]) {
+        case 'ls-files':
+          return '';
+        case 'submodule':
+          return new GitError('submodule status', 128, 'no submodule mapping found');
+        case 'rev-parse':
+          return args[1] === '--show-prefix' ? 'libs/plain-dir/\n' : 'SHOULD-NOT-BE-USED\n';
+        default:
+          return '';
+      }
+    });
+
+    const info = await new GitService(runner).getSubmoduleDiff('/repo', {
+      kind: 'workingTree',
+      path: 'libs/plain-dir',
+    });
+
+    expect(info).toBeNull();
+  });
+
+  it('submodule chưa init (prefix "-") và thiếu object: vẫn trả SHA, chi tiết null', async () => {
+    const runner = new FakeGitRunner((args) => {
+      switch (args[0]) {
+        case 'ls-files':
+          return `160000 ${OLD} 0\tlibs/child\0`;
+        case 'submodule':
+          return `-${OLD} libs/child\n`; // chưa init
+        case 'log':
+          return new GitError('log', 128, `fatal: bad object ${OLD}`);
+        default:
+          return '';
+      }
+    });
+
+    const info = await new GitService(runner).getSubmoduleDiff('/repo', {
+      kind: 'workingTree',
+      path: 'libs/child',
+    });
+
+    expect(info).toMatchObject({ oldOid: OLD, newOid: null, oldCommit: null, ahead: [] });
   });
 });

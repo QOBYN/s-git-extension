@@ -91,4 +91,18 @@ describe('parseStatusV2', () => {
     expect(result.files).toEqual([]);
     expect(result.branch).toBeNull();
   });
+
+  it('field <sub> bắt đầu bằng S đánh dấu submodule (file thường thì không)', () => {
+    const out = porcelain(
+      '1 .M SC.. 160000 160000 160000 h1 h2 libs/child',
+      '1 .M N... 100644 100644 100644 h1 h2 normal.ts',
+      'u UU S... 160000 160000 160000 160000 h1 h2 h3 libs/conflicted',
+    );
+
+    const files = parseStatusV2(out).files;
+
+    expect(files[0]).toMatchObject({ path: 'libs/child', submodule: true });
+    expect(files[1].submodule).toBeUndefined();
+    expect(files[2]).toMatchObject({ path: 'libs/conflicted', conflicted: true, submodule: true });
+  });
 });

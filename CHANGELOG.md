@@ -8,6 +8,22 @@ dùng đọc — mô tả thay đổi nhìn thấy được, không phải tên 
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-08-27
+
+### Added
+
+- Click item **submodule** trong Working Tree / History / File Log giờ mở view so sánh riêng
+  thay vì lỗi `bad object`: hai thẻ con trỏ **OLD → NEW** (hash, message, tác giả, thời gian,
+  nhánh/tag trỏ tại commit), kèm cảnh báo khi bên trong submodule còn thay đổi chưa commit
+- Lịch sử submodule vẽ dạng **cây 1 gốc 2 nhánh**: trái = phía OLD (đỏ), phải = phía NEW (xanh),
+  commit thêm/bớt đánh dấu +/−, hai nhánh chụm về gốc (**OLD/NEW/merge-base**) ghim dưới đáy;
+  danh sách dài thì cuộn bên trong, tiêu đề cột giữ nguyên khi cuộn
+- Thư mục là **repo git lồng chưa add** ("add mới 1 git") cũng được nhận diện — hiện trạng thái
+  *New submodule* cùng danh sách commit sẽ mang vào
+- Popup Checkout thêm lựa chọn **Nhánh mới tại commit này** (`git checkout -b`): được chọn sẵn
+  khi commit chưa có nhánh local, tên điền sẵn theo nhánh remote trỏ tại commit
+  (`origin/feature-x` → `feature-x`) — hết cảnh phải rơi vào detached HEAD
+
 ## [0.0.3] - 2026-08-27
 
 ### Added

@@ -14,6 +14,9 @@ export const DEFAULT_GIT_MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
 /** Prefix mọi command/config/view id của extension. */
 export const EXTENSION_ID_PREFIX = 's-git';
 
+/** Số commit tối đa mỗi chiều (ahead/behind) trong preview diff submodule. */
+export const SUBMODULE_PREVIEW_COMMITS = 20;
+
 // ---- feedback ----
 
 /**

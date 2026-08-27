@@ -105,6 +105,8 @@ export interface FileChange {
   unstaged: ChangeKind | null;
   untracked: boolean;
   conflicted: boolean;
+  /** Entry là submodule (field <sub> của porcelain v2 bắt đầu bằng 'S'). */
+  submodule?: boolean;
 }
 
 export interface WorkingTreeStatus {
@@ -137,6 +139,40 @@ export interface DiffPayload {
    * Host quyết định: đuôi file nhị phân đã biết HOẶC có byte NUL trong nội dung.
    */
   encoding: 'text' | 'base64';
+  /**
+   * Path là SUBMODULE (gitlink — `git show` không đọc được nội dung): original/
+   * modified rỗng, webview render view so sánh con trỏ thay vì diff text.
+   */
+  submodule?: SubmoduleDiffInfo;
+}
+
+/**
+ * So sánh con trỏ submodule giữa 2 phía của diff. Chi tiết commit (subject/
+ * author/refs…) đọc từ REPO CON nên là best-effort: null/rỗng khi submodule
+ * chưa init hoặc thiếu object — UI vẫn hiển thị được SHA.
+ */
+export interface SubmoduleDiffInfo {
+  /** SHA con trỏ 2 phía; null = phía đó không có (mới thêm / đã xoá / chưa init). */
+  oldOid: string | null;
+  newOid: string | null;
+  /** Chi tiết commit của từng con trỏ (kèm refs trỏ vào nó — nhánh/tag). */
+  oldCommit: CommitInfo | null;
+  newCommit: CommitInfo | null;
+  /** Commit chỉ có ở phía mới (`old..new`, mới nhất trước) — preview history. */
+  ahead: CommitInfo[];
+  /** Commit chỉ có ở phía cũ (`new..old`) — con trỏ bị lùi. */
+  behind: CommitInfo[];
+  /**
+   * Gốc chung (`merge-base old new`) khi 2 con trỏ PHÂN KỲ — điểm 2 đường ray
+   * lịch sử gặp nhau trong view. null khi fast-forward thuần / không tính được.
+   */
+  baseOid: string | null;
+  baseCommit: CommitInfo | null;
+  /** ahead/behind bị cắt bớt (nhiều hơn giới hạn truy vấn). */
+  aheadTruncated: boolean;
+  behindTruncated: boolean;
+  /** Nội dung BÊN TRONG submodule có thay đổi chưa commit (chỉ kind workingTree). */
+  dirty: boolean;
 }
 
 // ---- thao tác ghi ----
@@ -161,6 +197,11 @@ export type ResetMode = 'soft' | 'mixed' | 'hard';
 /** Tuỳ chọn checkout — force bỏ mọi thay đổi local (popup Checkout đã cảnh báo). */
 export interface CheckoutOptions {
   force?: boolean;
+  /**
+   * Tạo nhánh mới tên này tại `ref` rồi đứng trên đó (`git checkout -b`) —
+   * lựa chọn "Nhánh mới tại commit này" của popup Checkout, tránh detached HEAD.
+   */
+  newBranch?: string;
 }
 
 /**

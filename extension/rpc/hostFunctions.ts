@@ -107,12 +107,37 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
 
     async getDiff(repoRoot, target): Promise<DiffPayload> {
       // Đọc base64 thống nhất rồi mới quyết định text/binary — tránh đọc 2 lần.
-      const [originalB64, modifiedB64] = await Promise.all([
-        readSide(repoRoot, target, 'original'),
-        readSide(repoRoot, target, 'modified'),
-      ]);
+      let originalB64: string;
+      let modifiedB64: string;
+      try {
+        [originalB64, modifiedB64] = await Promise.all([
+          readSide(repoRoot, target, 'original'),
+          readSide(repoRoot, target, 'modified'),
+        ]);
+      } catch (error) {
+        // Path là SUBMODULE: entry trong index/tree là gitlink (commit SHA của
+        // repo con, không phải blob) nên `git show :path` fail "bad object" —
+        // trả view so sánh con trỏ thay vì diff nội dung.
+        if (error instanceof GitError && error.stderr.includes('bad object')) {
+          const submodule = await git.getSubmoduleDiff(repoRoot, target);
+          if (submodule !== null) {
+            return { original: '', modified: '', encoding: 'text', submodule };
+          }
+        }
+        throw error;
+      }
       const originalBuffer = Buffer.from(originalB64, 'base64');
       const modifiedBuffer = Buffer.from(modifiedB64, 'base64');
+      // 2 phía đều rỗng: có thể là thư mục repo git LỒNG chưa add (untracked —
+      // `git show :path` không lỗi mà trả rỗng, đọc file trên đĩa cũng rỗng vì
+      // là thư mục). Nếu đúng thì hiển thị view submodule "mới thêm" thay vì
+      // diff trống vô nghĩa.
+      if (originalBuffer.length === 0 && modifiedBuffer.length === 0) {
+        const submodule = await git.getSubmoduleDiff(repoRoot, target);
+        if (submodule !== null) {
+          return { original: '', modified: '', encoding: 'text', submodule };
+        }
+      }
       const binary =
         isKnownBinaryExtension(target.path) ||
         hasBinaryContent(originalBuffer) ||

@@ -377,7 +377,10 @@ function kindLabelOf(selection: WorkingSelection): string {
     return 'Untracked';
   }
   const kind = area === 'staged' ? file.staged : file.unstaged;
-  const label = kind ? kind.charAt(0).toUpperCase() + kind.slice(1) : 'Modified';
+  let label = kind ? kind.charAt(0).toUpperCase() + kind.slice(1) : 'Modified';
+  if (file.submodule) {
+    label = `Submodule ${label.toLowerCase()}`;
+  }
   return area === 'staged' ? `${label}, staged` : label;
 }
 

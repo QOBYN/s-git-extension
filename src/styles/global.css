@@ -1126,6 +1126,305 @@ button {
   color: var(--sg-fg-dim);
 }
 
+/* ---- diff submodule (gitlink): so sánh con trỏ + preview history ---- */
+
+.sg-submodule-diff {
+  flex: 1;
+  min-height: 0;
+  /* Không cuộn cả khối: card con trỏ/note đứng yên, phần ray tự cuộn bên trong. */
+  overflow: hidden;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.sg-submodule-pointer {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+/* Banner trạng thái: submodule mới thêm / bị xoá. */
+.sg-submodule-state {
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.sg-submodule-state.added {
+  color: var(--sg-added);
+  background: var(--vscode-diffEditor-insertedLineBackground, rgba(63, 185, 80, 0.16));
+}
+
+.sg-submodule-state.removed {
+  color: var(--sg-deleted);
+  background: var(--vscode-diffEditor-removedLineBackground, rgba(248, 81, 73, 0.16));
+}
+
+.sg-submodule-arrow {
+  align-self: center;
+  color: var(--sg-fg-dim);
+  font-size: 16px;
+}
+
+.sg-submodule-side {
+  flex: 1 1 0;
+  min-width: 0;
+  border: 1px solid var(--sg-border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sg-submodule-side-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sg-submodule-side-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sg-fg-dim);
+}
+
+.sg-submodule-sha {
+  font-family: var(--sg-mono);
+}
+
+.sg-submodule-sha.dim {
+  color: var(--sg-fg-dim);
+}
+
+.sg-submodule-side.added {
+  border-left: 3px solid var(--sg-added);
+}
+
+.sg-submodule-side.removed {
+  border-left: 3px solid var(--sg-deleted);
+}
+
+.sg-submodule-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sg-submodule-note {
+  margin: 0;
+  color: var(--sg-fg-dim);
+}
+
+/* Lịch sử 2 đường ray chụm về 1 gốc (BASE/OLD/NEW) — xem SubmoduleDiffView.
+   Cao theo nội dung khi ngắn; dài quá thì CUỘN BÊN TRONG phần cột commit
+   (min-height:0 cho phép co dưới min-content), dòng neo ghim dưới đáy. */
+.sg-submodule-rails {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
+  border: 1px solid var(--sg-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.sg-submodule-rails-columns {
+  display: flex;
+  align-items: stretch;
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.sg-submodule-history {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.sg-submodule-history + .sg-submodule-history {
+  border-left: 1px solid var(--sg-border);
+}
+
+.sg-submodule-history-title {
+  padding: 4px 10px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--sg-border);
+  /* Cuộn danh sách vẫn thấy tiêu đề cột (Commits added/removed). */
+  position: sticky;
+  top: 0;
+  background: var(--sg-bg);
+  z-index: 1;
+}
+
+.sg-submodule-history.added .sg-submodule-history-title {
+  color: var(--sg-added);
+}
+
+.sg-submodule-history.removed .sg-submodule-history-title {
+  color: var(--sg-deleted);
+}
+
+/* Thân ray: kẻ dọc màu chạy sau các nút commit — "đường" của mỗi phía. */
+.sg-submodule-history-body {
+  position: relative;
+  padding: 4px 0;
+}
+
+.sg-submodule-history-body::before {
+  content: '';
+  position: absolute;
+  left: 17px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  opacity: 0.45;
+}
+
+.sg-submodule-history.added .sg-submodule-history-body::before {
+  background: var(--sg-added);
+}
+
+.sg-submodule-history.removed .sg-submodule-history-body::before {
+  background: var(--sg-deleted);
+}
+
+.sg-submodule-commit {
+  position: relative; /* nằm trên đường kẻ của ray */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.sg-submodule-commit:hover {
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
+}
+
+.sg-submodule-commit .sg-submodule-subject {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Nút tròn trên ray: viền màu chiều, nền che đường kẻ, ký hiệu +/− bên trong. */
+.sg-submodule-dot {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid var(--sg-fg-dim);
+  background: var(--sg-bg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.sg-submodule-dot.added {
+  border-color: var(--sg-added);
+  color: var(--sg-added);
+}
+
+.sg-submodule-dot.removed {
+  border-color: var(--sg-deleted);
+  color: var(--sg-deleted);
+}
+
+.sg-submodule-dot.more {
+  border-style: dashed;
+  background: transparent;
+}
+
+.sg-submodule-dot.anchor {
+  border-color: var(--sg-fg-dim);
+  background: var(--sg-fg-dim);
+}
+
+/* Vùng hội tụ giữa cột commit và dòng neo: vẽ (các) đường ray chạy tiếp xuống
+   gốc. Phân kỳ (.both): nhánh trái (OLD, đỏ) đi thẳng, nhánh phải (NEW, xanh)
+   vòng từ ray cột phải (50% + 17px) về gốc — thành hình cây 1 gốc 2 nhánh. */
+.sg-submodule-converge {
+  position: relative;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+/* Nhánh đi thẳng xuống gốc (ray đơn, hoặc nhánh trái khi phân kỳ). */
+.sg-submodule-converge::before {
+  content: '';
+  position: absolute;
+  left: 17px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  opacity: 0.45;
+}
+
+.sg-submodule-converge.added::before {
+  background: var(--sg-added);
+}
+
+.sg-submodule-converge.removed::before,
+.sg-submodule-converge.both::before {
+  background: var(--sg-deleted);
+}
+
+/* Nhánh phải (NEW) vòng về gốc trái khi phân kỳ. */
+.sg-submodule-converge.both::after {
+  content: '';
+  position: absolute;
+  left: 18px;
+  right: calc(50% - 18px);
+  top: 0;
+  bottom: 4px;
+  border-right: 2px solid var(--sg-added);
+  border-bottom: 2px solid var(--sg-added);
+  border-bottom-right-radius: 10px;
+  opacity: 0.45;
+}
+
+/* Dòng neo dưới đáy — điểm các ray gặp nhau (merge-base / con trỏ phía kia).
+   Ghim ngoài vùng cuộn: cuộn list vẫn luôn thấy OLD/BASE. */
+.sg-submodule-anchor {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-top: 1px solid var(--sg-border);
+  background: var(--sg-bg-panel);
+  white-space: nowrap;
+}
+
+.sg-submodule-anchor .sg-submodule-subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Chip OLD/NEW/BASE ghim cạnh nút commit — vị trí con trỏ trong ray. */
+.sg-submodule-pointer-chip {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  border: 1px solid var(--sg-fg-dim);
+  color: var(--sg-fg-dim);
+}
+
 .sg-csv-diff {
   flex: 1;
   min-height: 0;
@@ -1422,6 +1721,13 @@ button {
 /* Phương án phá huỷ (reset --hard): nhãn đỏ để user khựng lại trước khi OK. */
 .sg-choice.danger .sg-choice-label {
   color: var(--sg-error);
+}
+
+/* Ô nhập tên nhánh mới trong popup Checkout (hiện khi chọn radio "Nhánh mới"). */
+.sg-new-branch-input {
+  margin-top: 4px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* ===== Focus 2 pane trong History: list commit ↔ changed files ===== */

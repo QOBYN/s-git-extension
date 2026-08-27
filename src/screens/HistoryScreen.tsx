@@ -147,6 +147,33 @@ export function HistoryScreen() {
   /** Commit của popup Checkout — tra lại từ danh sách để có subject/refs. */
   const checkoutCommit = store.commits.find((c) => c.oid === checkoutOid) ?? null;
 
+  /** Nhánh local trỏ đúng commit checkout (trừ nhánh hiện tại) — đích ưu tiên. */
+  const localBranchesAtCheckout =
+    checkoutCommit === null
+      ? []
+      : store.refs.filter(
+          (r) => r.kind === 'local' && r.oid === checkoutCommit.oid && !r.isHead,
+        );
+  /**
+   * Tên gợi ý cho ô "Nhánh mới": lấy theo nhánh REMOTE trỏ tại commit
+   * (origin/feature-x → feature-x), bỏ tên đã có nhánh local (checkout -b sẽ
+   * bị git từ chối) và origin/HEAD. Không có thì để trống cho user tự gõ.
+   */
+  const suggestedBranchName = (() => {
+    if (checkoutCommit === null) {
+      return '';
+    }
+    const localNames = new Set(
+      store.refs.filter((r) => r.kind === 'local').map((r) => r.name),
+    );
+    return (
+      store.refs
+        .filter((r) => r.kind === 'remote' && r.oid === checkoutCommit.oid)
+        .map((r) => r.name.slice(r.name.indexOf('/') + 1))
+        .find((name) => name !== 'HEAD' && !localNames.has(name)) ?? ''
+    );
+  })();
+
   /**
    * ↑/↓ trong diff chạm biên change đầu/cuối → chuyển file trước/sau TRONG CÙNG
    * COMMIT, theo thứ tự đang hiển thị (List/Tree — đọc DOM qua data-path).
@@ -346,31 +373,34 @@ export function HistoryScreen() {
           // Nhánh local trỏ đúng commit này (trừ nhánh đang checkout) — ưu tiên
           // checkout theo tên; luôn kèm lựa chọn detached HEAD tại commit.
           targets={[
-            ...store.refs
-              .filter((r) => r.kind === 'local' && r.oid === checkoutCommit.oid && !r.isHead)
-              .map((r) => ({
-                value: r.name,
-                label: `Branch ‘${r.name}’`,
-                detail: 'nhánh local trỏ tại commit này',
-              })),
+            ...localBranchesAtCheckout.map((r) => ({
+              value: r.name,
+              label: `Branch ‘${r.name}’`,
+              detail: 'nhánh local trỏ tại commit này',
+            })),
             {
               value: checkoutCommit.oid,
               label: `Commit ${checkoutCommit.oid.slice(0, 7)}`,
               detail: 'detached HEAD — không đứng trên nhánh nào',
             },
           ]}
+          newBranchAt={checkoutCommit.oid}
+          // Không có nhánh local tại commit → "Nhánh mới" là mặc định, tên điền
+          // sẵn theo nhánh remote trỏ tại commit (origin/feature-x → feature-x).
+          newBranchDefaultName={suggestedBranchName}
+          newBranchPreselected={localBranchesAtCheckout.length === 0}
           note={
-            store.refs.some(
-              (r) => r.kind === 'local' && r.oid === checkoutCommit.oid && !r.isHead,
-            ) ? undefined : (
+            localBranchesAtCheckout.length > 0 ? undefined : (
               <>
-                HEAD sẽ ở trạng thái <b>detached</b> tại {checkoutCommit.oid.slice(0, 7)} (không
-                có nhánh local nào tại commit này).
+                Không có nhánh local nào tại commit này — chọn <b>Nhánh mới</b> để tránh
+                trạng thái <b>detached HEAD</b>.
               </>
             )
           }
           changedCount={store.status?.files.length ?? 0}
-          onSubmit={(ref, dirty) => void store.checkoutCommit(activeRepo.root, ref, dirty)}
+          onSubmit={(ref, dirty, newBranch) =>
+            void store.checkoutCommit(activeRepo.root, ref, dirty, newBranch)
+          }
           onClose={() => setCheckoutOid(null)}
         />
       )}

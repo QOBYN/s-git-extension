@@ -129,8 +129,14 @@ interface RepoStoreState {
    * History, hoặc double-click nhánh ở sidebar — nên nhận repoRoot tường minh):
    * `dirty` là cách xử lý thay đổi chưa commit — stash & re-apply / mang theo /
    * discard (--force). Working tree sạch thì dirty nào cũng như 'bring'.
+   * `newBranch`: tạo nhánh mới tên này tại ref rồi checkout (`-b`) — tránh detached.
    */
-  checkoutCommit(repoRoot: string, ref: string, dirty: CheckoutDirtyAction): Promise<void>;
+  checkoutCommit(
+    repoRoot: string,
+    ref: string,
+    dirty: CheckoutDirtyAction,
+    newBranch?: string,
+  ): Promise<void>;
   /** Refetch status repo active — popup Checkout gọi lúc mở để đếm change chính xác. */
   refreshStatus(): Promise<void>;
   /** Context menu commit (E): Add Branch/Tag tại commit; refs refresh sau khi tạo. */
@@ -602,14 +608,17 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
       await applyHistoryRefs([]);
     },
 
-    async checkoutCommit(repoRoot, ref, dirty) {
+    async checkoutCommit(repoRoot, ref, dirty, newBranch) {
       const root = repoRoot;
       if (get().loading) {
         return;
       }
       // oid đầy đủ hiển thị rút gọn; tên nhánh giữ nguyên.
       const short = /^[0-9a-f]{40}$/.test(ref) ? ref.slice(0, 7) : ref;
-      set({ error: null, loading: true, statusMessage: `Checking out '${short}'…` });
+      /** Đích hiển thị: tên nhánh mới (nếu tạo) hoặc ref rút gọn. */
+      const label = newBranch !== undefined ? `${newBranch}' at '${short}` : short;
+      const opts = newBranch !== undefined ? { newBranch } : undefined;
+      set({ error: null, loading: true, statusMessage: `Checking out '${label}'…` });
       /** Re-apply stash bị conflict — checkout VẪN thành công, chỉ cảnh báo thêm. */
       let popConflict: string | null = null;
       try {
@@ -622,7 +631,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
             `s-git: auto-stash before checkout '${short}'`,
           );
           try {
-            await host.checkout(root, ref);
+            await host.checkout(root, ref, opts);
           } catch (error) {
             // Checkout hỏng → pop lại ngay để trả working tree về như cũ.
             if (stashed) {
@@ -638,7 +647,11 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
             }
           }
         } else {
-          await host.checkout(root, ref, dirty === 'discard' ? { force: true } : undefined);
+          await host.checkout(
+            root,
+            ref,
+            dirty === 'discard' ? { force: true, ...opts } : opts,
+          );
         }
         // Refresh TRƯỚC rồi mới set message chốt (như remoteOp) — fetchLog set
         // 'Ready' đè lên. refreshRepoData tự lo cả trường hợp sidebar (per-repo).
@@ -646,14 +659,23 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
         if (popConflict !== null) {
           set({
             error: popConflict,
-            statusMessage: `Checked out '${short}' — re-apply gặp conflict, thay đổi vẫn nằm trong stash.`,
+            statusMessage: `Checked out '${label}' — re-apply gặp conflict, thay đổi vẫn nằm trong stash.`,
           });
         } else {
-          set({ statusMessage: `Checked out '${short}'.` });
+          set({
+            statusMessage:
+              newBranch !== undefined
+                ? `Created branch '${newBranch}' at ${short} and checked out.`
+                : `Checked out '${short}'.`,
+          });
         }
       } catch (error) {
         // "Mang theo" đụng file bị checkout ghi đè → popup Dirty Guard xử lý tiếp.
-        if (!guardDirtyError(root, `Checkout '${short}'`, error, () => host.checkout(root, ref))) {
+        if (
+          !guardDirtyError(root, `Checkout '${label}'`, error, () =>
+            host.checkout(root, ref, opts),
+          )
+        ) {
           set({ error: formatError(error) });
         }
         await refreshRepoData(root);
