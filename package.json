@@ -2,7 +2,7 @@
   "name": "s-git",
   "displayName": "S-Git",
   "description": "Git client trong VS Code: commit graph nhiều nhánh, staging theo hunk, diff/merge và file log — gói gọn trong một panel.",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "publisher": "qobyn",
   "license": "SEE LICENSE IN LICENSE.md",
   "icon": "media/icon.png",
