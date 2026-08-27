@@ -13,6 +13,7 @@ import type {
   MergeStrategy,
   PanelMode,
   RefInfo,
+  RemoteInfo,
   RepoInfo,
   WorkingTreeStatus,
 } from '../../shared/types';
@@ -40,6 +41,8 @@ interface RepoStoreState {
   refs: RefInfo[];
   /** Refs theo từng repo — sidebar hiển thị nhánh của MỌI repo (không chỉ repo active). */
   refsByRepo: Record<string, RefInfo[]>;
+  /** Remote đã khai báo theo repo — sidebar hiện cả remote chưa fetch (chưa có ref). */
+  remotesByRepo: Record<string, RemoteInfo[]>;
   /** Lọc graph theo 1 ref (click nhánh — B1); null = mọi nhánh (--all). */
   historyRef: string | null;
   /** Màn File Log: log của riêng file này (--follow); null = graph thường. */
@@ -77,6 +80,8 @@ interface RepoStoreState {
   initSidebar(): Promise<void>;
   /** Sidebar: nạp refs của tất cả repo vào refsByRepo. */
   loadAllRefs(): Promise<void>;
+  /** Sidebar: nạp danh sách remote của tất cả repo. */
+  loadAllRemotes(): Promise<void>;
   setMode(mode: UiMode): void;
   selectRepo(root: string): Promise<void>;
   selectCommit(oid: string): Promise<void>;
@@ -244,6 +249,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     hasMoreCommits: false,
     refs: [],
     refsByRepo: {},
+    remotesByRepo: {},
     historyRef: window.__SMARTGIT_INIT__?.ref ?? null,
     fileLogPath: window.__SMARTGIT_INIT__?.filePath ?? null,
     commitSearch: window.__SMARTGIT_INIT__?.search ?? null,
@@ -297,7 +303,12 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
       try {
         const repos = await host.listRepos();
         set({ repos, loading: false, statusMessage: 'Ready' });
-        await Promise.all([get().loadAllRefs(), get().loadAllFolders(), get().loadAllStatuses()]);
+        await Promise.all([
+          get().loadAllRefs(),
+          get().loadAllRemotes(),
+          get().loadAllFolders(),
+          get().loadAllStatuses(),
+        ]);
       } catch (error) {
         set({ loading: false, error: String(error) });
       }
@@ -314,6 +325,19 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
         }),
       );
       set({ refsByRepo: Object.fromEntries(entries) });
+    },
+
+    async loadAllRemotes() {
+      const entries = await Promise.all(
+        get().repos.map(async (repo): Promise<[string, RemoteInfo[]]> => {
+          try {
+            return [repo.root, await host.listRemotes(repo.root)];
+          } catch {
+            return [repo.root, []];
+          }
+        }),
+      );
+      set({ remotesByRepo: Object.fromEntries(entries) });
     },
 
     async loadAllFolders() {
@@ -355,7 +379,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
       } catch (error) {
         set({ error: String(error) });
       }
-      await Promise.all([get().loadAllRefs(), get().loadAllStatuses()]);
+      await Promise.all([get().loadAllRefs(), get().loadAllRemotes(), get().loadAllStatuses()]);
       // Danh sách repo cũng có thể đổi (tên nhánh trên header).
       set({ repos: await host.listRepos() });
     },

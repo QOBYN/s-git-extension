@@ -241,6 +241,56 @@ describe('GitService — thao tác nhánh/tag từ sidebar', () => {
   });
 });
 
+describe('GitService — quản lý remote (add/edit/list)', () => {
+  it('listRemotes parse `remote -v`: chỉ lấy dòng (fetch), giữ URL có khoảng trắng phía trước dấu ngoặc', async () => {
+    const runner = new FakeGitRunner(
+      () =>
+        'origin\thttps://github.com/a/b.git (fetch)\n' +
+        'origin\thttps://github.com/a/b.git (push)\n' +
+        'backup\tgit@gitlab.com:a/b.git (fetch)\n' +
+        'backup\tgit@gitlab.com:a/b.git (push)\n',
+    );
+    expect(await new GitService(runner).listRemotes('/repo')).toEqual([
+      { name: 'origin', url: 'https://github.com/a/b.git' },
+      { name: 'backup', url: 'git@gitlab.com:a/b.git' },
+    ]);
+  });
+
+  it('listRemotes trả rỗng khi repo không có remote', async () => {
+    const runner = new FakeGitRunner(() => '\n');
+    expect(await new GitService(runner).listRemotes('/repo')).toEqual([]);
+  });
+
+  it('addRemote chắn tên bằng "--", exclusive', async () => {
+    const runner = new FakeGitRunner(() => '');
+    await new GitService(runner).addRemote('/repo', 'origin', 'https://x/y.git');
+
+    const call = runner.callsOf('remote')[0];
+    expect(call.args).toEqual(['remote', 'add', '--', 'origin', 'https://x/y.git']);
+    expect(call.opts.exclusive).toBe(true);
+  });
+
+  it('editRemote giữ tên: chỉ set-url, không rename', async () => {
+    const runner = new FakeGitRunner(() => '');
+    await new GitService(runner).editRemote('/repo', 'origin', 'origin', 'https://new/url.git');
+
+    expect(runner.callsOf('remote').map((c) => c.args)).toEqual([
+      ['remote', 'set-url', '--', 'origin', 'https://new/url.git'],
+    ]);
+  });
+
+  it('editRemote đổi tên: rename trước rồi set-url theo TÊN MỚI', async () => {
+    const runner = new FakeGitRunner(() => '');
+    await new GitService(runner).editRemote('/repo', 'origin', 'upstream', 'https://new/url.git');
+
+    expect(runner.callsOf('remote').map((c) => c.args)).toEqual([
+      ['remote', 'rename', '--', 'origin', 'upstream'],
+      ['remote', 'set-url', '--', 'upstream', 'https://new/url.git'],
+    ]);
+    expect(runner.callsOf('remote').every((c) => c.opts.exclusive)).toBe(true);
+  });
+});
+
 describe('GitService — truy vấn phụ', () => {
   it('isRepo trả false khi rev-parse lỗi (thư mục thường)', async () => {
     const runner = new FakeGitRunner(() => new GitError('rev-parse', 128, 'not a git repository'));

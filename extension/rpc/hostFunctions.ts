@@ -165,6 +165,11 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
       await writeFile(absPath, content, 'utf8');
     },
 
+    // ---- quản lý remote ----
+    listRemotes: (repoRoot) => git.listRemotes(repoRoot),
+    addRemote: (repoRoot, name, url) => git.addRemote(repoRoot, name, url),
+    editRemote: (repoRoot, oldName, newName, url) => git.editRemote(repoRoot, oldName, newName, url),
+
     // ---- remote (P2) ----
     fetch: (repoRoot) => git.fetch(repoRoot),
     pull: (repoRoot) => git.pull(repoRoot),

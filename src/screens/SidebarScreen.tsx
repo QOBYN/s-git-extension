@@ -7,12 +7,13 @@
 // Mọi click đều mở/reveal panel qua host.openPanel — không cần chạy lệnh tay.
 
 import { useEffect, useState } from 'react';
-import type { RefInfo, RepoInfo } from '../../shared/types';
+import type { RefInfo, RemoteInfo, RepoInfo } from '../../shared/types';
 import { childFolders } from '../../shared/folders';
 import { ContextMenu, type MenuState } from '../components/ContextMenu';
 import { FeedbackDialog } from '../components/FeedbackDialog';
 import { MergeDialog } from '../components/MergeDialog';
 import { PromptModal } from '../components/PromptModal';
+import { RemoteDialog } from '../components/RemoteDialog';
 import { host } from '../rpc';
 import { useRepoStore } from '../store/repoStore';
 import { copyText } from '../utils/clipboard';
@@ -30,6 +31,12 @@ interface MergePrompt {
   target: string;
 }
 
+/** Dialog Add/Edit Remote — remote null = thêm mới. */
+interface RemotePrompt {
+  repo: RepoInfo;
+  remote: RemoteInfo | null;
+}
+
 type SidebarTab = 'workingTree' | 'git';
 
 export function SidebarScreen() {
@@ -38,6 +45,7 @@ export function SidebarScreen() {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [renamePrompt, setRenamePrompt] = useState<RenamePrompt | null>(null);
   const [mergePrompt, setMergePrompt] = useState<MergePrompt | null>(null);
+  const [remotePrompt, setRemotePrompt] = useState<RemotePrompt | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   useEffect(() => {
@@ -100,6 +108,33 @@ export function SidebarScreen() {
     });
   };
 
+  /** Context menu header repo (tab Git) — thêm remote mới cho repo đó. */
+  const openRepoGitMenu = (event: React.MouseEvent, repo: RepoInfo) => {
+    event.preventDefault();
+    setMenu({
+      x: event.clientX,
+      y: event.clientY,
+      entries: [
+        { label: 'Add Remote…', onClick: () => setRemotePrompt({ repo, remote: null }) },
+      ],
+    });
+  };
+
+  /** Context menu header 1 remote (☁ origin) — sửa tên/URL hoặc thêm remote khác. */
+  const openRemoteMenu = (event: React.MouseEvent, repo: RepoInfo, remote: RemoteInfo) => {
+    event.preventDefault();
+    setMenu({
+      x: event.clientX,
+      y: event.clientY,
+      entries: [
+        { label: `Edit Remote '${remote.name}'…`, onClick: () => setRemotePrompt({ repo, remote }) },
+        { label: 'Add Remote…', onClick: () => setRemotePrompt({ repo, remote: null }) },
+        'sep',
+        { label: 'Copy URL', disabled: remote.url === '', onClick: () => copyText(remote.url) },
+      ],
+    });
+  };
+
   // Submodule là repo có root nằm trong root của repo khác — hiện lồng trong cha.
   const topLevelRepos = store.repos.filter(
     (repo) => !store.repos.some((other) => other !== repo && repo.root.startsWith(other.root + '/')),
@@ -139,6 +174,8 @@ export function SidebarScreen() {
                 repo={repo}
                 submodules={submodulesOf(repo)}
                 onRefMenu={openRefMenu}
+                onRepoMenu={openRepoGitMenu}
+                onRemoteMenu={openRemoteMenu}
               />
             ))}
           </>
@@ -183,6 +220,29 @@ export function SidebarScreen() {
             )
           }
           onClose={() => setRenamePrompt(null)}
+        />
+      )}
+      {remotePrompt && (
+        <RemoteDialog
+          title={
+            remotePrompt.remote === null
+              ? `Add remote to '${remotePrompt.repo.name}'`
+              : `Edit remote '${remotePrompt.remote.name}'`
+          }
+          actionLabel={remotePrompt.remote === null ? 'Add Remote' : 'Save'}
+          initialName={remotePrompt.remote?.name}
+          initialUrl={remotePrompt.remote?.url}
+          onSubmit={(name, url) => {
+            const old = remotePrompt.remote;
+            void store.sidebarGitOp(
+              () =>
+                old === null
+                  ? host.addRemote(remotePrompt.repo.root, name, url)
+                  : host.editRemote(remotePrompt.repo.root, old.name, name, url),
+              old === null ? `Added remote '${name}'.` : `Updated remote '${name}'.`,
+            );
+          }}
+          onClose={() => setRemotePrompt(null)}
         />
       )}
       {mergePrompt && (
@@ -321,28 +381,41 @@ function RepoGit({
   repo,
   submodules,
   onRefMenu,
+  onRepoMenu,
+  onRemoteMenu,
 }: {
   repo: RepoInfo;
   submodules: RepoInfo[];
   onRefMenu(event: React.MouseEvent, repo: RepoInfo, ref: RefInfo): void;
+  onRepoMenu(event: React.MouseEvent, repo: RepoInfo): void;
+  onRemoteMenu(event: React.MouseEvent, repo: RepoInfo, remote: RemoteInfo): void;
 }) {
   const allRefs = useRepoStore((s) => s.refsByRepo[repo.root]) ?? [];
+  const declaredRemotes = useRepoStore((s) => s.remotesByRepo[repo.root]) ?? [];
   const filter = useRepoStore((s) => s.sidebarRefFilter).toLowerCase();
   const [collapsed, setCollapsed] = useState(false);
 
   const refs = filter === '' ? allRefs : allRefs.filter((r) => r.name.toLowerCase().includes(filter));
   const locals = refs.filter((r) => r.kind === 'local');
   const tags = refs.filter((r) => r.kind === 'tag');
-  const remotes = new Map<string, RefInfo[]>();
+  // Nhóm theo remote: khởi tạo từ danh sách khai báo để remote CHƯA fetch
+  // (chưa có ref nào) vẫn hiện — vừa thêm xong là thấy ngay, chuột phải sửa được.
+  const remotes = new Map<string, RefInfo[]>(declaredRemotes.map((r) => [r.name, []]));
   for (const ref of refs.filter((r) => r.kind === 'remote')) {
     const slash = ref.name.indexOf('/');
     const remote = slash === -1 ? ref.name : ref.name.slice(0, slash);
     (remotes.get(remote) ?? remotes.set(remote, []).get(remote)!).push(ref);
   }
+  const remoteInfoOf = (name: string): RemoteInfo =>
+    declaredRemotes.find((r) => r.name === name) ?? { name, url: '' };
 
   return (
     <div className="sg-sidebar-repo">
-      <div className="sg-repo-header" title={repo.root}>
+      <div
+        className="sg-repo-header"
+        title={repo.root}
+        onContextMenu={(e) => onRepoMenu(e, repo)}
+      >
         <span
           className={`sg-tree-chevron${collapsed ? '' : ' open'}`}
           onClick={() => setCollapsed((v) => !v)}
@@ -368,8 +441,16 @@ function RepoGit({
             ))}
           </GitSection>
 
-          {[...remotes.entries()].map(([remote, members]) => (
-            <GitSection key={remote} title={`☁ ${remote}`} count={members.length}>
+          {[...remotes.entries()]
+            // Đang filter thì ẩn remote không có ref khớp (giữ danh sách gọn).
+            .filter(([, members]) => filter === '' || members.length > 0)
+            .map(([remote, members]) => (
+            <GitSection
+              key={remote}
+              title={`☁ ${remote}`}
+              count={members.length}
+              onContextMenu={(e) => onRemoteMenu(e, repo, remoteInfoOf(remote))}
+            >
               {members.map((ref) => (
                 <RefRow
                   key={ref.fullName}
@@ -425,17 +506,24 @@ function GitSection({
   title,
   count,
   defaultOpen,
+  onContextMenu,
   children,
 }: {
   title: string;
   count: number;
   defaultOpen?: boolean;
+  onContextMenu?(event: React.MouseEvent): void;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen ?? false);
   return (
     <div>
-      <div className="sg-tree-row section" style={{ paddingLeft: 18 }} onClick={() => setOpen(!open)}>
+      <div
+        className="sg-tree-row section"
+        style={{ paddingLeft: 18 }}
+        onClick={() => setOpen(!open)}
+        onContextMenu={onContextMenu}
+      >
         <span className={`sg-tree-chevron${open ? ' open' : ''}`} />
         <span className="sg-tree-label section-title">{title}</span>
         <span className="sg-count-badge dim">{count}</span>

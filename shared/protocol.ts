@@ -18,6 +18,7 @@ import type {
   MergeStrategy,
   PanelMode,
   RefInfo,
+  RemoteInfo,
   RepoDelta,
   RepoInfo,
   WorkingTreeStatus,
@@ -92,6 +93,13 @@ export interface HostFunctions {
   revealInOS(repoRoot: string, relPath: string): Promise<void>;
   /** Mở tab File Log cho 1 file (menu "File Log" — đường vào màn hình C). */
   openFileLog(repoRoot: string, relPath: string): Promise<void>;
+
+  // ---- quản lý remote (context menu sidebar tab Git) ----
+  /** Remote đã khai báo (tên + URL fetch) — hiện cả remote chưa fetch lần nào. */
+  listRemotes(repoRoot: string): Promise<RemoteInfo[]>;
+  addRemote(repoRoot: string, name: string, url: string): Promise<void>;
+  /** Đổi tên (nếu khác) rồi set-url — dialog Edit Remote sửa được cả hai. */
+  editRemote(repoRoot: string, oldName: string, newName: string, url: string): Promise<void>;
 
   // ---- remote (P2) — toolbar Fetch / Pull / Push ----
   /** `git fetch --all --prune`. */

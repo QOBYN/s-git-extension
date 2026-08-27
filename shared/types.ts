@@ -66,6 +66,13 @@ export interface RefInfo {
   isHead: boolean;
 }
 
+/** Remote đã khai báo (git remote) — sidebar tab Git, menu Add/Edit Remote. */
+export interface RemoteInfo {
+  name: string;
+  /** URL fetch (URL push riêng là trường hợp hiếm — ngoài phạm vi). */
+  url: string;
+}
+
 // ---- files trong 1 commit (panel B6) ----
 
 export interface CommitFileChange {

@@ -11,6 +11,7 @@ import type {
   MergeResult,
   MergeStrategy,
   RefInfo,
+  RemoteInfo,
 } from '../../shared/types';
 import { parseCommitFiles } from './commitFilesParser';
 import { foldersFromPaths } from '../../shared/folders';
@@ -272,6 +273,36 @@ export class GitService {
   /** Revert 1 hunk khỏi WORKING TREE (không đụng index) — patch từ diff index↔working. */
   async revertHunk(root: string, patch: string): Promise<void> {
     await this.runner.run(root, ['apply', '--reverse', '-'], { stdin: patch, exclusive: true });
+  }
+
+  // ---- quản lý remote (context menu sidebar tab Git) ----
+
+  /** Remote đã khai báo (tên + URL fetch) — nguồn cho sidebar và dialog Edit Remote. */
+  async listRemotes(root: string): Promise<RemoteInfo[]> {
+    // `git remote -v` in mỗi remote 2 dòng "<tên>\t<url> (fetch|push)" — chỉ lấy fetch.
+    const out = await this.runner.run(root, ['remote', '-v']);
+    const remotes: RemoteInfo[] = [];
+    for (const line of out.split('\n')) {
+      const match = /^(\S+)\t(.*) \(fetch\)$/.exec(line);
+      if (match) {
+        remotes.push({ name: match[1]!, url: match[2]! });
+      }
+    }
+    return remotes;
+  }
+
+  async addRemote(root: string, name: string, url: string): Promise<void> {
+    await this.runner.run(root, ['remote', 'add', '--', name, url], { exclusive: true });
+  }
+
+  /** Đổi tên (nếu khác) rồi set-url — git tự chặn tên trùng/không hợp lệ. */
+  async editRemote(root: string, oldName: string, newName: string, url: string): Promise<void> {
+    if (newName !== oldName) {
+      await this.runner.run(root, ['remote', 'rename', '--', oldName, newName], {
+        exclusive: true,
+      });
+    }
+    await this.runner.run(root, ['remote', 'set-url', '--', newName, url], { exclusive: true });
   }
 
   // ---- remote (P2): fetch / pull / push — đều exclusive vì có thể đổi refs/working tree ----
