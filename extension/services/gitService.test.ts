@@ -57,6 +57,31 @@ describe('GitService.getLog', () => {
     expect(page.hasMore).toBe(false);
   });
 
+  it('ref là 1 chuỗi hoặc mảng nhiều ref — truyền hết vào args, không kèm --all', async () => {
+    const runner = new FakeGitRunner((args) =>
+      args[0] === 'log' ? fakeLogOutput(1) : 'headoid\n',
+    );
+    const git = new GitService(runner);
+
+    await git.getLog('/repo', { ref: 'main' });
+    await git.getLog('/repo', { ref: ['main', 'origin/dev', 'v1.0'] });
+
+    const [single, multi] = runner.callsOf('log').map((c) => c.args);
+    expect(single).toContain('main');
+    expect(single).not.toContain('--all');
+    expect(multi).toEqual(expect.arrayContaining(['main', 'origin/dev', 'v1.0']));
+    expect(multi).not.toContain('--all');
+  });
+
+  it('ref mảng rỗng coi như không lọc — vẫn --all', async () => {
+    const runner = new FakeGitRunner((args) =>
+      args[0] === 'log' ? fakeLogOutput(1) : 'headoid\n',
+    );
+    await new GitService(runner).getLog('/repo', { ref: [] });
+
+    expect(runner.callsOf('log')[0].args).toContain('--all');
+  });
+
   it('skip được truyền thành --skip cho trang "Load more"', async () => {
     const runner = new FakeGitRunner((args) =>
       args[0] === 'log' ? fakeLogOutput(1) : 'headoid\n',

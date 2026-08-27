@@ -268,6 +268,108 @@ button {
   margin: 0;
 }
 
+/* ---- dropdown lọc nhánh của màn History (tách với filter sidebar) ---- */
+
+.sg-branch-filter {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.sg-branch-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 260px;
+  padding: 1px 8px;
+  border: 1px solid var(--sg-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sg-fg);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sg-branch-filter-btn:hover {
+  background: var(--sg-row-hover);
+}
+
+/* Đang lọc theo 1 nhánh: nổi bật kiểu badge HEAD để không view nhầm mà tưởng --all. */
+.sg-branch-filter-btn.active {
+  background: var(--sg-badge-bg);
+  color: var(--sg-badge-fg);
+  outline: 1px solid var(--sg-accent);
+  font-weight: 600;
+}
+
+.sg-branch-caret {
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+.sg-branch-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  width: 280px;
+  padding: 4px;
+  background: var(--vscode-menu-background, var(--sg-bg-panel));
+  color: var(--vscode-menu-foreground, var(--sg-fg));
+  border: 1px solid var(--vscode-menu-border, var(--sg-border));
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.sg-branch-dropdown .sg-filter-input {
+  width: 100%;
+  margin: 0 0 4px;
+}
+
+.sg-branch-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* Tiêu đề nhóm: Local Branches / Remote Branches / Tags. */
+.sg-branch-group {
+  padding: 5px 10px 2px;
+  color: var(--sg-fg-dim);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.sg-branch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Cột ✓ cố định bên trái mỗi ref — multi-select: mờ khi chưa chọn để hàng thẳng cột. */
+.sg-branch-check {
+  display: inline-block;
+  width: 16px;
+  color: var(--sg-accent);
+  visibility: hidden;
+}
+
+.sg-branch-check.on {
+  visibility: visible;
+}
+
+.sg-menu-item.checked {
+  font-weight: 600;
+}
+
 .sg-load-more {
   display: block;
   margin: 8px auto;

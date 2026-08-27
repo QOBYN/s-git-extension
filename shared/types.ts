@@ -36,8 +36,11 @@ export interface LogOptions {
   skip?: number;
   /** Mặc định true — graph nhiều nhánh như SmartGit. */
   all?: boolean;
-  /** Chỉ lịch sử của 1 ref (click nhánh ở sidebar B1) — bỏ qua `all` khi đặt. */
-  ref?: string;
+  /**
+   * Chỉ lịch sử của các ref này (click nhánh ở sidebar B1, hoặc multi-select
+   * từ dropdown lọc nhánh của màn History) — bỏ qua `all` khi có ít nhất 1 ref.
+   */
+  ref?: string | string[];
   /**
    * Log của riêng 1 file (màn File Log — ui-analysis C): dùng --follow để theo
    * dấu qua rename. Khi đặt, `all` bị bỏ qua (--follow không đi với --all).

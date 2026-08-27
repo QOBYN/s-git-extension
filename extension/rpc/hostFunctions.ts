@@ -58,7 +58,7 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
   async function getLogCached(repoRoot: string, opts?: Parameters<GitService['getLog']>[1]): Promise<LogPage> {
     // Trang "Load more", log lọc theo ref, và log theo file không cache —
     // chỉ cache trang đầu mặc định của graph.
-    if (opts?.skip || opts?.ref || opts?.path) {
+    if (opts?.skip || (opts?.ref?.length ?? 0) > 0 || opts?.path) {
       return git.getLog(repoRoot, opts);
     }
     const [headOid, refsSignature] = await Promise.all([

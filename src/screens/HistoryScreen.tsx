@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CommitFileChange, CommitInfo } from '../../shared/types';
+import { BranchFilter } from '../components/BranchFilter';
 import { CommitDetail } from '../components/CommitDetail';
 import { CommitRow } from '../components/CommitRow';
 import { ContextMenu, type MenuState } from '../components/ContextMenu';
@@ -214,17 +215,11 @@ export function HistoryScreen() {
     <>
       <div className="sg-main">
         <div className="sg-graph-column">
-          {/* Cây nhánh nằm ở sidebar VSCode; header của graph giữ chip lọc ref
-              + Ô SEARCH COMMIT của riêng màn History (lọc trang đã tải tức thì). */}
+          {/* Cây nhánh nằm ở sidebar VSCode; header của graph có dropdown lọc
+              nhánh CỦA RIÊNG màn History (tách với filter sidebar — luôn thấy
+              rõ đang xem nhánh nào) + ô search commit (lọc trang đã tải). */}
           <div className="sg-graph-header">
-            {store.historyRef !== null && (
-              <span className="sg-ref-badge head" title="Graph filtered to this ref">
-                {store.historyRef}
-                <button className="sg-chip-clear" onClick={() => void store.setHistoryRef(null)}>
-                  ✕
-                </button>
-              </span>
-            )}
+            <BranchFilter />
             <span className="sg-diff-spacer" />
             <input
               className="sg-filter-input inline"

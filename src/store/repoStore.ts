@@ -43,8 +43,11 @@ interface RepoStoreState {
   refsByRepo: Record<string, RefInfo[]>;
   /** Remote đã khai báo theo repo — sidebar hiện cả remote chưa fetch (chưa có ref). */
   remotesByRepo: Record<string, RemoteInfo[]>;
-  /** Lọc graph theo 1 ref (click nhánh — B1); null = mọi nhánh (--all). */
-  historyRef: string | null;
+  /**
+   * Lọc graph theo các ref đã chọn (click nhánh — B1, hoặc multi-select từ
+   * dropdown lọc nhánh của màn History); [] = mọi nhánh (--all).
+   */
+  historyRefs: string[];
   /** Màn File Log: log của riêng file này (--follow); null = graph thường. */
   fileLogPath: string | null;
   /** Tìm commit (từ ô search ở sidebar) — lọc client-side trang đã tải. */
@@ -85,7 +88,12 @@ interface RepoStoreState {
   setMode(mode: UiMode): void;
   selectRepo(root: string): Promise<void>;
   selectCommit(oid: string): Promise<void>;
+  /** Đặt lọc graph về ĐÚNG 1 ref (null = mọi nhánh) — sidebar click dùng đường này. */
   setHistoryRef(ref: string | null): Promise<void>;
+  /** Bật/tắt 1 ref trong bộ lọc graph (multi-select của dropdown History). */
+  toggleHistoryRef(ref: string): Promise<void>;
+  /** Bỏ hết lọc — quay về mọi nhánh (--all). */
+  clearHistoryRefs(): Promise<void>;
   checkoutBranch(name: string): Promise<void>;
   /** Context menu commit (E): Add Branch/Tag tại commit; refs refresh sau khi tạo. */
   createBranchAt(name: string, oid: string): Promise<void>;
@@ -170,7 +178,8 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
         get().setFolderScope(folder);
       }
       if (ref !== undefined) {
-        set({ historyRef: ref });
+        // Sidebar điều hướng theo 1 nhánh → thay cả bộ lọc multi đang có.
+        set({ historyRefs: ref === null ? [] : [ref] });
       }
       if (search !== undefined) {
         set({ commitSearch: search });
@@ -188,7 +197,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     try {
       const page: LogPage = await host.getLog(root, {
         skip: append ? get().commits.length : 0,
-        ref: get().historyRef ?? undefined,
+        ref: get().historyRefs.length > 0 ? get().historyRefs : undefined,
         path: get().fileLogPath ?? undefined,
       });
       set((state) => ({
@@ -250,7 +259,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     refs: [],
     refsByRepo: {},
     remotesByRepo: {},
-    historyRef: window.__SMARTGIT_INIT__?.ref ?? null,
+    historyRefs: window.__SMARTGIT_INIT__?.ref ? [window.__SMARTGIT_INIT__.ref] : [],
     fileLogPath: window.__SMARTGIT_INIT__?.filePath ?? null,
     commitSearch: window.__SMARTGIT_INIT__?.search ?? null,
     selectedOid: null,
@@ -467,11 +476,18 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     },
 
     async setHistoryRef(ref) {
-      set({ historyRef: ref, selectedOid: null, commitFiles: [], commitBody: null, selectedFile: null, diff: null });
-      const root = get().activeRepoRoot;
-      if (root !== null) {
-        await fetchLog(root, false);
-      }
+      await applyHistoryRefs(ref === null ? [] : [ref]);
+    },
+
+    async toggleHistoryRef(ref) {
+      const current = get().historyRefs;
+      await applyHistoryRefs(
+        current.includes(ref) ? current.filter((r) => r !== ref) : [...current, ref],
+      );
+    },
+
+    async clearHistoryRefs() {
+      await applyHistoryRefs([]);
     },
 
     async checkoutBranch(name) {
@@ -705,6 +721,22 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
       set({ loading: false });
     },
   };
+
+  /** Đổi bộ lọc ref của graph: reset selection (commit có thể ngoài lọc) + tải lại log. */
+  async function applyHistoryRefs(refs: string[]): Promise<void> {
+    set({
+      historyRefs: refs,
+      selectedOid: null,
+      commitFiles: [],
+      commitBody: null,
+      selectedFile: null,
+      diff: null,
+    });
+    const root = get().activeRepoRoot;
+    if (root !== null) {
+      await fetchLog(root, false);
+    }
+  }
 
   /** Merge/rebase xong: panel chính refresh repo active, sidebar refresh mọi repo. */
   async function refreshRepoData(root: string): Promise<void> {

@@ -84,8 +84,9 @@ export class GitService {
     if (opts.path) {
       args.push('--follow'); // File Log: theo dấu file qua rename (ui-analysis C)
     }
-    if (opts.ref) {
-      args.push(opts.ref); // lọc theo 1 nhánh/tag (click nhánh ở sidebar B1)
+    const refs = typeof opts.ref === 'string' ? [opts.ref] : opts.ref ?? [];
+    if (refs.length > 0) {
+      args.push(...refs); // lọc theo nhánh/tag đã chọn (sidebar B1 / dropdown History)
     } else if (!opts.path && (opts.all ?? true)) {
       args.push('--all'); // graph nhiều nhánh như SmartGit (ui-analysis B4)
     }
