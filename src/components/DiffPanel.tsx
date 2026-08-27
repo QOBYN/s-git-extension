@@ -269,7 +269,12 @@ export function DiffPanel({
 
       {loading && <div className="sg-diff-loading">Loading diff…</div>}
       {diff?.submodule !== undefined && kind === 'submodule' && (
-        <SubmoduleDiffView info={diff.submodule} />
+        <SubmoduleDiffView
+          // Đổi file/con trỏ → remount để reset các trang "show more" đã tải.
+          key={`${path}:${diff.submodule.oldOid}:${diff.submodule.newOid}`}
+          info={diff.submodule}
+          path={path}
+        />
       )}
       {diff !== null && kind === 'image' && <ImageDiffView path={path} diff={diff} />}
       {diff !== null && kind === 'binary' && <BinaryDiffNote diff={diff} />}

@@ -17,6 +17,9 @@ export const EXTENSION_ID_PREFIX = 's-git';
 /** Số commit tối đa mỗi chiều (ahead/behind) trong preview diff submodule. */
 export const SUBMODULE_PREVIEW_COMMITS = 20;
 
+/** Số commit mỗi lần "show more" trong view diff submodule. */
+export const SUBMODULE_LOG_PAGE_SIZE = 50;
+
 // ---- feedback ----
 
 /**

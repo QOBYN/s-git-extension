@@ -25,6 +25,7 @@ import type {
   RemoteInfo,
   RepoDelta,
   RepoInfo,
+  SubmoduleLogPage,
   WorkingTreeStatus,
 } from './types';
 
@@ -35,6 +36,16 @@ export interface HostFunctions {
   getLog(repoRoot: string, opts?: LogOptions): Promise<LogPage>;
   getStatus(repoRoot: string): Promise<WorkingTreeStatus>;
   getDiff(repoRoot: string, target: DiffTarget): Promise<DiffPayload>;
+  /**
+   * Trang tiếp theo của history repo con — nút "show more" trong view diff
+   * submodule khi preview ahead/behind bị cắt. `range` = "old..new" hoặc 1 oid.
+   */
+  getSubmoduleLog(
+    repoRoot: string,
+    path: string,
+    range: string,
+    skip: number,
+  ): Promise<SubmoduleLogPage>;
   /** Toàn bộ refs cho sidebar nhánh (local/remote/tag — ui-analysis B1). */
   listRefs(repoRoot: string): Promise<RefInfo[]>;
   /** Danh sách file thay đổi của 1 commit (panel B6). */

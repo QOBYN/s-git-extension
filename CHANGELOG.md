@@ -17,7 +17,8 @@ dùng đọc — mô tả thay đổi nhìn thấy được, không phải tên 
   nhánh/tag trỏ tại commit), kèm cảnh báo khi bên trong submodule còn thay đổi chưa commit
 - Lịch sử submodule vẽ dạng **cây 1 gốc 2 nhánh**: trái = phía OLD (đỏ), phải = phía NEW (xanh),
   commit thêm/bớt đánh dấu +/−, hai nhánh chụm về gốc (**OLD/NEW/merge-base**) ghim dưới đáy;
-  danh sách dài thì cuộn bên trong, tiêu đề cột giữ nguyên khi cuộn
+  danh sách dài thì cuộn bên trong, tiêu đề cột giữ nguyên khi cuộn; quá 20 commit thì bấm
+  **show earlier commits** để tải thêm từng trang 50
 - Thư mục là **repo git lồng chưa add** ("add mới 1 git") cũng được nhận diện — hiện trạng thái
   *New submodule* cùng danh sách commit sẽ mang vào
 - Popup Checkout thêm lựa chọn **Nhánh mới tại commit này** (`git checkout -b`): được chọn sẵn

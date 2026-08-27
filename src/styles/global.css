@@ -1308,6 +1308,22 @@ button {
   background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
 }
 
+/* Dòng "show earlier commits" là button load thêm — giữ diện mạo như 1 dòng ray. */
+button.sg-submodule-more {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.sg-submodule-more:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
 .sg-submodule-commit .sg-submodule-subject {
   flex: 1;
   min-width: 0;

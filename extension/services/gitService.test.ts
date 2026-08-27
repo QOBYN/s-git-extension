@@ -756,6 +756,33 @@ describe('GitService.getSubmoduleDiff', () => {
     expect(info).toBeNull();
   });
 
+  it('getSubmoduleLog: phân trang bằng --skip trong repo con, dư 1 commit → hasMore', async () => {
+    const runner = new FakeGitRunner((args, cwd) => {
+      expect(cwd).toBe('/repo/libs/child');
+      expect(args).toContain('--skip=20');
+      expect(args).toContain('--max-count=51');
+      // Trả 51 record → trang 50 + hasMore.
+      return Array.from({ length: 51 }, (_, i) => rec(`c${i}`, `msg ${i}`)).join('\n');
+    });
+
+    const page = await new GitService(runner).getSubmoduleLog(
+      '/repo',
+      'libs/child',
+      `${OLD}..${NEW}`,
+      20,
+    );
+
+    expect(page.commits).toHaveLength(50);
+    expect(page.hasMore).toBe(true);
+  });
+
+  it('getSubmoduleLog: chặn range không phải oid/oid..oid (không cho lọt flag lạ)', async () => {
+    const git = new GitService(new FakeGitRunner(() => ''));
+    await expect(git.getSubmoduleLog('/repo', 'libs/child', '--all', 0)).rejects.toThrow(
+      'Range không hợp lệ',
+    );
+  });
+
   it('submodule chưa init (prefix "-") và thiếu object: vẫn trả SHA, chi tiết null', async () => {
     const runner = new FakeGitRunner((args) => {
       switch (args[0]) {

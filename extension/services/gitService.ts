@@ -4,7 +4,11 @@
 
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { DEFAULT_LOG_PAGE_SIZE, SUBMODULE_PREVIEW_COMMITS } from '../../shared/constants';
+import {
+  DEFAULT_LOG_PAGE_SIZE,
+  SUBMODULE_LOG_PAGE_SIZE,
+  SUBMODULE_PREVIEW_COMMITS,
+} from '../../shared/constants';
 import type {
   CheckoutOptions,
   CommitFileChange,
@@ -20,6 +24,7 @@ import type {
   RemoteInfo,
   ResetMode,
   SubmoduleDiffInfo,
+  SubmoduleLogPage,
 } from '../../shared/types';
 import { parseCommitFiles } from './commitFilesParser';
 import { foldersFromPaths } from '../../shared/folders';
@@ -360,6 +365,38 @@ export class GitService {
       return parseLog(out)[0] ?? null;
     } catch {
       return null; // chưa init / thiếu object — UI vẫn còn SHA để hiển thị
+    }
+  }
+
+  /**
+   * Trang tiếp theo của history submodule — nút "show more" khi preview bị cắt.
+   * `range` do webview dựng từ oid đã có: "old..new" hoặc 1 oid — validate chặt
+   * để không thành flag/tham số lạ của git log.
+   */
+  async getSubmoduleLog(
+    root: string,
+    path: string,
+    range: string,
+    skip: number,
+  ): Promise<SubmoduleLogPage> {
+    if (!/^[0-9a-f]+(\.\.[0-9a-f]+)?$/.test(range)) {
+      throw new Error(`Range không hợp lệ: ${range}`);
+    }
+    try {
+      const out = await this.runner.run(join(root, path), [
+        'log',
+        `--max-count=${SUBMODULE_LOG_PAGE_SIZE + 1}`,
+        `--skip=${Math.max(0, Math.floor(skip))}`,
+        `--pretty=format:${LOG_FORMAT}`,
+        range,
+      ]);
+      const commits = parseLog(out);
+      return {
+        commits: commits.slice(0, SUBMODULE_LOG_PAGE_SIZE),
+        hasMore: commits.length > SUBMODULE_LOG_PAGE_SIZE,
+      };
+    } catch {
+      return { commits: [], hasMore: false }; // repo con chưa init/thiếu object
     }
   }
 

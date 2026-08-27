@@ -168,11 +168,17 @@ export interface SubmoduleDiffInfo {
    */
   baseOid: string | null;
   baseCommit: CommitInfo | null;
-  /** ahead/behind bị cắt bớt (nhiều hơn giới hạn truy vấn). */
+  /** ahead/behind bị cắt bớt (nhiều hơn giới hạn truy vấn) — load thêm qua getSubmoduleLog. */
   aheadTruncated: boolean;
   behindTruncated: boolean;
   /** Nội dung BÊN TRONG submodule có thay đổi chưa commit (chỉ kind workingTree). */
   dirty: boolean;
+}
+
+/** 1 trang log của repo con — nút "show more" trong view diff submodule. */
+export interface SubmoduleLogPage {
+  commits: CommitInfo[];
+  hasMore: boolean;
 }
 
 // ---- thao tác ghi ----

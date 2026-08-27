@@ -86,6 +86,8 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
     getLog: (repoRoot, opts) => getLogCached(repoRoot, opts),
 
     listRefs: (repoRoot) => git.listRefs(repoRoot),
+    getSubmoduleLog: (repoRoot, path, range, skip) =>
+      git.getSubmoduleLog(repoRoot, path, range, skip),
     getCommitFiles: (repoRoot, oid) => git.getCommitFiles(repoRoot, oid),
     getCommitBody: (repoRoot, oid) => git.getCommitBody(repoRoot, oid),
 

@@ -5,11 +5,14 @@
 //   · dòng NEO dưới cùng: fast-forward = chính commit OLD (thấy hash old trong
 //     dòng chảy), phân kỳ = merge-base — điểm 2 ray gặp nhau.
 
+import { useState } from 'react';
 import type { CommitInfo, SubmoduleDiffInfo } from '../../../shared/types';
+import { host } from '../../rpc';
+import { useRepoStore } from '../../store/repoStore';
 import { formatRelativeDate } from '../../utils/date';
 import { AuthorBadge } from '../AuthorBadge';
 
-export function SubmoduleDiffView({ info }: { info: SubmoduleDiffInfo }) {
+export function SubmoduleDiffView({ info, path }: { info: SubmoduleDiffInfo; path: string }) {
   // 3 trạng thái chính: mới thêm / bị xoá / con trỏ dời (hoặc đứng yên + dirty).
   const state =
     info.oldOid === null && info.newOid !== null
@@ -66,7 +69,7 @@ export function SubmoduleDiffView({ info }: { info: SubmoduleDiffInfo }) {
           </p>
         )}
 
-      <HistoryRails info={info} state={state} />
+      <HistoryRails info={info} path={path} state={state} />
     </div>
   );
 }
@@ -82,19 +85,66 @@ export function SubmoduleDiffView({ info }: { info: SubmoduleDiffInfo }) {
  */
 function HistoryRails({
   info,
+  path,
   state,
 }: {
   info: SubmoduleDiffInfo;
+  path: string;
   state: 'added' | 'removed' | 'changed';
 }) {
-  const hasAdded = info.ahead.length > 0;
-  const hasRemoved = info.behind.length > 0;
+  const repoRoot = useRepoStore((s) => s.activeRepoRoot);
+  /**
+   * Trang load thêm ("show more") nối vào sau preview của host. Component được
+   * remount theo key path+oldOid+newOid (DiffPanel) nên không cần tự reset.
+   */
+  const [extraAhead, setExtraAhead] = useState<CommitInfo[]>([]);
+  const [extraBehind, setExtraBehind] = useState<CommitInfo[]>([]);
+  const [aheadHasMore, setAheadHasMore] = useState(info.aheadTruncated);
+  const [behindHasMore, setBehindHasMore] = useState(info.behindTruncated);
+  const [loadingSide, setLoadingSide] = useState<'ahead' | 'behind' | null>(null);
+
+  const ahead = [...info.ahead, ...extraAhead];
+  const behind = [...info.behind, ...extraBehind];
+
+  const hasAdded = ahead.length > 0;
+  const hasRemoved = behind.length > 0;
   if (!hasAdded && !hasRemoved) {
     return null;
   }
   const diverged = hasAdded && hasRemoved;
   /** Con trỏ dời → cây 2 nhánh đầy đủ; submodule mới thêm/xoá → 1 ray đơn. */
   const twoRails = state === 'changed';
+
+  /** Range như host đã dùng cho chiều đó — "old..new" / "new..old" / 1 oid. */
+  const rangeOf = (side: 'ahead' | 'behind'): string | null => {
+    const { oldOid, newOid } = info;
+    if (oldOid !== null && newOid !== null) {
+      return side === 'ahead' ? `${oldOid}..${newOid}` : `${newOid}..${oldOid}`;
+    }
+    return side === 'ahead' ? newOid : oldOid;
+  };
+
+  const loadMore = async (side: 'ahead' | 'behind') => {
+    const range = rangeOf(side);
+    if (repoRoot === null || range === null || loadingSide !== null) {
+      return;
+    }
+    setLoadingSide(side);
+    try {
+      const skip = side === 'ahead' ? ahead.length : behind.length;
+      const page = await host.getSubmoduleLog(repoRoot, path, range, skip);
+      if (side === 'ahead') {
+        setExtraAhead((prev) => [...prev, ...page.commits]);
+        setAheadHasMore(page.hasMore);
+      } else {
+        setExtraBehind((prev) => [...prev, ...page.commits]);
+        setBehindHasMore(page.hasMore);
+      }
+    } catch {
+      // Lỗi tải trang (repo con đổi giữa chừng…) — giữ hasMore để bấm thử lại.
+    }
+    setLoadingSide(null);
+  };
 
   // Dòng neo chung dưới đáy — gốc cây, nơi 2 nhánh gặp nhau.
   let anchor: { label: string; oid: string; commit: CommitInfo | null } | null = null;
@@ -118,12 +168,14 @@ function HistoryRails({
           <Rail
             title={
               state === 'removed'
-                ? `History before removal (${count(info.behind, info.behindTruncated)})`
-                : `Commits removed (${count(info.behind, info.behindTruncated)})`
+                ? `History before removal (${count(behind, behindHasMore)})`
+                : `Commits removed (${count(behind, behindHasMore)})`
             }
-            commits={info.behind}
+            commits={behind}
             tone="removed"
-            truncated={info.behindTruncated}
+            hasMore={behindHasMore}
+            loadingMore={loadingSide === 'behind'}
+            onLoadMore={() => void loadMore('behind')}
             pointer={info.oldOid !== null ? { oid: info.oldOid, label: 'OLD' } : null}
             emptyNote="none — OLD is an ancestor of NEW"
           />
@@ -132,12 +184,14 @@ function HistoryRails({
           <Rail
             title={
               state === 'added'
-                ? `Commits included (${count(info.ahead, info.aheadTruncated)} — recent history)`
-                : `Commits added (${count(info.ahead, info.aheadTruncated)})`
+                ? `Commits included (${count(ahead, aheadHasMore)} — recent history)`
+                : `Commits added (${count(ahead, aheadHasMore)})`
             }
-            commits={info.ahead}
+            commits={ahead}
             tone="added"
-            truncated={info.aheadTruncated}
+            hasMore={aheadHasMore}
+            loadingMore={loadingSide === 'ahead'}
+            onLoadMore={() => void loadMore('ahead')}
             pointer={info.newOid !== null ? { oid: info.newOid, label: 'NEW' } : null}
             emptyNote="none — NEW is an ancestor of OLD"
           />
@@ -224,14 +278,19 @@ function Rail({
   title,
   commits,
   tone,
-  truncated,
+  hasMore,
+  loadingMore,
+  onLoadMore,
   pointer,
   emptyNote,
 }: {
   title: string;
   commits: CommitInfo[];
   tone: 'added' | 'removed';
-  truncated: boolean;
+  /** Còn commit chưa hiện — dòng "⋮" thành nút load trang tiếp theo. */
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore(): void;
   /** Con trỏ ghim chip trên dòng commit trùng oid (NEW ở ray xanh, OLD ở ray đỏ). */
   pointer: { oid: string; label: string } | null;
   /** Ghi chú khi nhánh này không có commit riêng (vẫn giữ ray cho đủ 2 đường). */
@@ -262,11 +321,17 @@ function Rail({
             <span className="sg-commit-date">{formatRelativeDate(c.date)}</span>
           </div>
         ))}
-        {truncated && (
-          <div className="sg-submodule-commit">
+        {hasMore && (
+          <button
+            className="sg-submodule-commit sg-submodule-more"
+            disabled={loadingMore}
+            onClick={onLoadMore}
+          >
             <span className={`sg-submodule-dot more ${tone}`}>⋮</span>
-            <span className="sg-detail-meta">earlier commits not shown</span>
-          </div>
+            <span className="sg-detail-meta">
+              {loadingMore ? 'loading…' : 'show earlier commits'}
+            </span>
+          </button>
         )}
       </div>
     </div>
