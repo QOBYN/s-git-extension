@@ -338,6 +338,31 @@ describe('GitService — remote (fetch/pull/push)', () => {
     expect(call.opts.exclusive).toBe(true);
   });
 
+  it('pull map mode ra đúng cờ; không mode thì pull trần (theo config user)', async () => {
+    const runner = new FakeGitRunner(() => '');
+    const git = new GitService(runner);
+    await git.pull('/repo');
+    await git.pull('/repo', 'merge');
+    await git.pull('/repo', 'rebase');
+    await git.pull('/repo', 'ff-only');
+
+    expect(runner.callsOf('pull').map((c) => c.args)).toEqual([
+      ['pull'],
+      ['pull', '--no-rebase'],
+      ['pull', '--rebase'],
+      ['pull', '--ff-only'],
+    ]);
+  });
+
+  it('push to: đẩy HEAD lên refs/heads/<branch> của remote chỉ định, exclusive', async () => {
+    const runner = new FakeGitRunner(() => '');
+    await new GitService(runner).push('/repo', { remote: 'origin', branch: 'feat-x' });
+
+    const call = runner.callsOf('push')[0];
+    expect(call.args).toEqual(['push', '--', 'origin', 'HEAD:refs/heads/feat-x']);
+    expect(call.opts.exclusive).toBe(true);
+  });
+
   it('push thành công không gọi thêm lệnh nào', async () => {
     const runner = new FakeGitRunner(() => '');
     await new GitService(runner).push('/repo');
@@ -424,5 +449,20 @@ describe('GitService.merge / rebase', () => {
     });
     const result = await new GitService(runner).rebase('/repo', 'main');
     expect(result).toEqual({ status: 'conflicts', conflictedPaths: ['x.ts'] });
+  });
+
+  it('reset map mode ra đúng cờ --soft/--mixed/--hard, exclusive', async () => {
+    const runner = new FakeGitRunner(() => '');
+    const git = new GitService(runner);
+    await git.reset('/repo', 'abc1234', 'soft');
+    await git.reset('/repo', 'abc1234', 'mixed');
+    await git.reset('/repo', 'abc1234', 'hard');
+
+    expect(runner.callsOf('reset').map((c) => c.args)).toEqual([
+      ['reset', '--soft', 'abc1234'],
+      ['reset', '--mixed', 'abc1234'],
+      ['reset', '--hard', 'abc1234'],
+    ]);
+    expect(runner.callsOf('reset').every((c) => c.opts.exclusive)).toBe(true);
   });
 });

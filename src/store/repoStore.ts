@@ -12,7 +12,10 @@ import type {
   MergeResult,
   MergeStrategy,
   PanelMode,
+  PullMode,
+  PushTarget,
   RefInfo,
+  ResetMode,
   RemoteInfo,
   RepoInfo,
   WorkingTreeStatus,
@@ -135,8 +138,16 @@ interface RepoStoreState {
   continueOperation(): Promise<void>;
 
   // ---- remote + merge/rebase (P2) ----
-  /** Toolbar: fetch/pull/push trên repo active của panel chính. */
-  remoteOp(kind: 'fetch' | 'pull' | 'push'): Promise<void>;
+  /**
+   * Toolbar: fetch/pull/push trên repo active của panel chính.
+   * `pullMode` từ popup Pull; `pushTo` từ menu "Push to…" của nút Push.
+   */
+  remoteOp(
+    kind: 'fetch' | 'pull' | 'push',
+    opts?: { pullMode?: PullMode; pushTo?: PushTarget },
+  ): Promise<void>;
+  /** Context menu History: reset nhánh hiện tại về commit (dialog chọn soft/mixed/hard). */
+  resetToCommit(oid: string, mode: ResetMode): Promise<void>;
   /**
    * Merge `target` vào nhánh hiện tại của `repoRoot` (dialog D1). Nhận repoRoot
    * tường minh vì gọi được từ cả panel chính (repo active) lẫn sidebar (repo bất kỳ).
@@ -658,19 +669,27 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
 
     // ---- remote + merge/rebase (P2) ----
 
-    async remoteOp(kind) {
+    async remoteOp(kind, opts) {
       const root = get().activeRepoRoot;
       if (root === null || get().loading) {
         return; // đang có thao tác khác — toolbar cũng disable, đây là chốt chặn cuối
       }
+      const pushLabel = opts?.pushTo ? ` to ${opts.pushTo.remote}/${opts.pushTo.branch}` : '';
       const labels = {
         fetch: ['Fetching…', 'Fetch completed.'],
-        pull: ['Pulling…', 'Pull completed.'],
-        push: ['Pushing…', 'Push completed.'],
+        pull: [
+          opts?.pullMode === 'rebase' ? 'Pulling (rebase)…' : 'Pulling…',
+          'Pull completed.',
+        ],
+        push: [`Pushing${pushLabel}…`, `Push${pushLabel} completed.`],
       }[kind];
       set({ error: null, loading: true, statusMessage: labels[0] });
       try {
-        await { fetch: host.fetch, pull: host.pull, push: host.push }[kind](root);
+        await {
+          fetch: () => host.fetch(root),
+          pull: () => host.pull(root, opts?.pullMode),
+          push: () => host.push(root, opts?.pushTo),
+        }[kind]();
         // Refresh TRƯỚC rồi mới set message chốt — fetchLog thành công sẽ set 'Ready' đè lên.
         await Promise.all([fetchLog(root, false), fetchRefs(root), fetchStatus(root)]);
         set({ statusMessage: labels[1] });
@@ -717,6 +736,24 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
       } catch (error) {
         set({ error: String(error) });
         await refreshRepoData(repoRoot);
+      }
+      set({ loading: false });
+    },
+
+    async resetToCommit(oid, mode) {
+      const root = get().activeRepoRoot;
+      if (root === null || get().loading) {
+        return;
+      }
+      const short = oid.slice(0, 7);
+      set({ error: null, loading: true, statusMessage: `Resetting (--${mode}) to ${short}…` });
+      try {
+        await host.reset(root, oid, mode);
+        // Refresh TRƯỚC rồi mới set message chốt (như remoteOp) — log/refs/status đều đổi.
+        await Promise.all([fetchLog(root, false), fetchRefs(root), fetchStatus(root)]);
+        set({ statusMessage: `Reset (--${mode}) to ${short}.` });
+      } catch (error) {
+        set({ error: String(error) });
       }
       set({ loading: false });
     },

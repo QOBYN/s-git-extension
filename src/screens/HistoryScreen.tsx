@@ -10,7 +10,9 @@ import { CommitDetail } from '../components/CommitDetail';
 import { CommitRow } from '../components/CommitRow';
 import { ContextMenu, type MenuState } from '../components/ContextMenu';
 import { DiffPanel } from '../components/DiffPanel';
+import { MergeDialog } from '../components/MergeDialog';
 import { PromptModal } from '../components/PromptModal';
+import { ResetDialog } from '../components/ResetDialog';
 import { Splitter } from '../components/Splitter';
 import { ROW_HEIGHT } from '../components/graph/GraphCell';
 import { layoutGraph } from '../engine/graphLayout';
@@ -30,6 +32,12 @@ export function HistoryScreen() {
   const layout = useLayoutStore();
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [refPrompt, setRefPrompt] = useState<RefPrompt | null>(null);
+  /** Dialog Merge commit vào nhánh hiện tại (context menu) — oid nguồn. */
+  const [mergeOid, setMergeOid] = useState<string | null>(null);
+  /** Dialog Reset nhánh hiện tại về commit (context menu) — oid đích. */
+  const [resetOid, setResetOid] = useState<string | null>(null);
+
+  const activeRepo = store.repos.find((r) => r.root === store.activeRepoRoot) ?? null;
 
   /** Context menu commit — mục E: nhóm separator, hint phím tắt, disable ≠ ẩn. */
   const openCommitMenu = (event: React.MouseEvent, commit: CommitInfo) => {
@@ -41,6 +49,16 @@ export function HistoryScreen() {
           label: 'Check Out…',
           hint: '⌘G',
           onClick: () => void store.checkoutBranch(commit.oid),
+        },
+        {
+          label: 'Merge…',
+          disabled: store.loading,
+          onClick: () => setMergeOid(commit.oid),
+        },
+        {
+          label: 'Reset…',
+          disabled: store.loading,
+          onClick: () => setResetOid(commit.oid),
         },
         'sep',
         {
@@ -305,6 +323,25 @@ export function HistoryScreen() {
       )}
 
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {mergeOid !== null && activeRepo !== null && (
+        <MergeDialog
+          kind="merge"
+          currentBranch={activeRepo.branch}
+          targets={[mergeOid]}
+          initialTarget={mergeOid}
+          targetLabel={`commit ${mergeOid.slice(0, 7)}`}
+          onSubmit={(target, strategy) => void store.mergeBranch(activeRepo.root, target, strategy)}
+          onClose={() => setMergeOid(null)}
+        />
+      )}
+      {resetOid !== null && activeRepo !== null && (
+        <ResetDialog
+          currentBranch={activeRepo.branch}
+          oid={resetOid}
+          onSubmit={(mode) => void store.resetToCommit(resetOid, mode)}
+          onClose={() => setResetOid(null)}
+        />
+      )}
       {refPrompt && (
         <PromptModal
           title={refPrompt.kind === 'branch' ? 'Add Branch at commit' : 'Add Tag at commit'}

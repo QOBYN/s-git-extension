@@ -10,8 +10,11 @@ import type {
   LogPage,
   MergeResult,
   MergeStrategy,
+  PullMode,
+  PushTarget,
   RefInfo,
   RemoteInfo,
+  ResetMode,
 } from '../../shared/types';
 import { parseCommitFiles } from './commitFilesParser';
 import { foldersFromPaths } from '../../shared/folders';
@@ -314,20 +317,35 @@ export class GitService {
   }
 
   /**
-   * Pull theo config của user (pull.rebase/pull.ff…) — không áp đặt chiến lược.
-   * Nhánh phân kỳ mà chưa cấu hình cách hoà: git tự từ chối với hint rõ ràng,
-   * UI hiển thị nguyên stderr đó.
+   * Pull theo mode từ popup Pull: merge (--no-rebase) / rebase (--rebase) /
+   * ff-only (--ff-only). Không có mode thì theo config của user
+   * (pull.rebase/pull.ff…) — không áp đặt chiến lược. Conflict/từ chối:
+   * git trả stderr với hint rõ ràng, UI hiển thị nguyên văn.
    */
-  async pull(root: string): Promise<void> {
-    await this.runner.run(root, ['pull'], { exclusive: true });
+  async pull(root: string, mode?: PullMode): Promise<void> {
+    const flags: Record<PullMode, string> = {
+      merge: '--no-rebase',
+      rebase: '--rebase',
+      'ff-only': '--ff-only',
+    };
+    const args = mode === undefined ? ['pull'] : ['pull', flags[mode]];
+    await this.runner.run(root, args, { exclusive: true });
   }
 
   /**
    * Push nhánh hiện tại. Nhánh chưa có upstream: nếu repo có ĐÚNG 1 remote thì
    * tự `push -u <remote> HEAD` (hành vi của các git GUI); nhiều remote thì giữ
    * nguyên lỗi của git để user tự quyết — không đoán bừa remote.
+   * Có `to` ("Push to…"): đẩy HEAD lên nhánh chỉ định — refs/heads/ tường minh
+   * để tạo nhánh mới trên remote khi chưa tồn tại, không đụng upstream hiện tại.
    */
-  async push(root: string): Promise<void> {
+  async push(root: string, to?: PushTarget): Promise<void> {
+    if (to !== undefined) {
+      await this.runner.run(root, ['push', '--', to.remote, `HEAD:refs/heads/${to.branch}`], {
+        exclusive: true,
+      });
+      return;
+    }
     try {
       await this.runner.run(root, ['push'], { exclusive: true });
     } catch (error) {
@@ -384,6 +402,14 @@ export class GitService {
     } catch (error) {
       return { status: 'conflicts', conflictedPaths: await this.conflictsOrRethrow(root, error) };
     }
+  }
+
+  /**
+   * Reset nhánh hiện tại về 1 commit (dialog Reset — context menu History).
+   * --hard huỷ thay đổi local: dialog phía UI đã cảnh báo rõ trước khi gọi.
+   */
+  async reset(root: string, oid: string, mode: ResetMode): Promise<void> {
+    await this.runner.run(root, ['reset', `--${mode}`, oid], { exclusive: true });
   }
 
   /** Danh sách file đang conflict (unmerged) trong working tree. */

@@ -172,12 +172,13 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
 
     // ---- remote (P2) ----
     fetch: (repoRoot) => git.fetch(repoRoot),
-    pull: (repoRoot) => git.pull(repoRoot),
-    push: (repoRoot) => git.push(repoRoot),
+    pull: (repoRoot, mode) => git.pull(repoRoot, mode),
+    push: (repoRoot, to) => git.push(repoRoot, to),
 
-    // ---- merge / rebase (P2) ----
+    // ---- merge / rebase / reset (P2) ----
     merge: (repoRoot, target, strategy) => git.merge(repoRoot, target, strategy),
     rebase: (repoRoot, onto) => git.rebase(repoRoot, onto),
+    reset: (repoRoot, oid, mode) => git.reset(repoRoot, oid, mode),
 
     async abortOperation(repoRoot) {
       const activity = await currentActivity(repoRoot);

@@ -8,6 +8,8 @@ dùng đọc — mô tả thay đổi nhìn thấy được, không phải tên 
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-08-27
+
 ### Added
 
 - Commit graph nhiều nhánh, phân trang 1.000 commit + *Load more*
@@ -15,9 +17,18 @@ dùng đọc — mô tả thay đổi nhìn thấy được, không phải tên 
 - Diff nhận biết loại file: ảnh so sánh cạnh nhau, CSV dạng bảng, binary hiện thông tin
 - File Log: mở lịch sử một file thành tab editor riêng (context menu Explorer/Editor)
 - Fetch / pull / push trên toolbar; hộp thoại Merge và Rebase với lựa chọn strategy
+- Pull mở popup chọn cách hoà: **Merge / Rebase / Fast-Forward Only** — ghi nhớ lựa chọn cho lần sau
+- Nút Push có mũi tên **Push to…**: đẩy HEAD lên nhánh chỉ định trên remote, tự tạo nhánh mới nếu chưa có
+- Chuột phải commit trong History có thêm **Merge…** và **Reset…** (Soft / Mixed / Hard — ghi nhớ lựa chọn)
 - Điều hướng bàn phím trong History: mũi tên chuyển pane, ↑/↓ duyệt diff, Page/Home/End
 - Nút nhảy hunk: tới đầu/cuối file thì chuyển tiếp sang file trước/sau trong cùng commit
 - Toggle hiển thị danh sách file dạng list hoặc cây thư mục
 - Theo dõi `.git/` và tự refresh, có debounce chỉnh được
 
-[Unreleased]: https://github.com/QOBYN/s-git-extension/commits/main
+### Changed
+
+- Bỏ nút Merge / Rebase khỏi toolbar (ít dùng) — merge/rebase nhánh vẫn ở context menu
+  nhánh trong sidebar, merge một commit nằm ở context menu History
+
+[Unreleased]: https://github.com/QOBYN/s-git-extension/compare/v0.0.2...HEAD
+[0.0.2]: https://github.com/QOBYN/s-git-extension/commits/v0.0.2

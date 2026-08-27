@@ -152,6 +152,18 @@ export interface MergeResult {
   conflictedPaths: string[];
 }
 
+/** Cách hoà remote vào local khi Pull (popup Pull — nhớ lựa chọn lần trước). */
+export type PullMode = 'merge' | 'rebase' | 'ff-only';
+
+/** Kiểu reset của dialog Reset tại commit (context menu History). */
+export type ResetMode = 'soft' | 'mixed' | 'hard';
+
+/** Đích của "Push to…": đẩy HEAD lên nhánh chỉ định trên remote (tạo mới nếu chưa có). */
+export interface PushTarget {
+  remote: string;
+  branch: string;
+}
+
 export interface CommitOptions {
   amend?: boolean;
   pushAfter?: boolean;

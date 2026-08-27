@@ -17,7 +17,10 @@ import type {
   MergeResult,
   MergeStrategy,
   PanelMode,
+  PullMode,
+  PushTarget,
   RefInfo,
+  ResetMode,
   RemoteInfo,
   RepoDelta,
   RepoInfo,
@@ -104,10 +107,18 @@ export interface HostFunctions {
   // ---- remote (P2) — toolbar Fetch / Pull / Push ----
   /** `git fetch --all --prune`. */
   fetch(repoRoot: string): Promise<void>;
-  /** `git pull` — chiến lược hoà theo config của user (pull.rebase…). */
-  pull(repoRoot: string): Promise<void>;
-  /** `git push`; nhánh chưa có upstream + đúng 1 remote thì tự `push -u`. */
-  push(repoRoot: string): Promise<void>;
+  /**
+   * `git pull` theo mode từ popup Pull (merge/rebase/ff-only); không truyền mode
+   * thì theo config của user (pull.rebase…).
+   */
+  pull(repoRoot: string, mode?: PullMode): Promise<void>;
+  /**
+   * `git push`; nhánh chưa có upstream + đúng 1 remote thì tự `push -u`.
+   * Có `to` ("Push to…"): đẩy HEAD lên nhánh chỉ định trên remote đó.
+   */
+  push(repoRoot: string, to?: PushTarget): Promise<void>;
+  /** `git reset --<mode> <oid>` — dialog Reset từ context menu History. */
+  reset(repoRoot: string, oid: string, mode: ResetMode): Promise<void>;
 
   // ---- merge / rebase (P2) — spec mục 2.4: rebase dùng chung luồng conflict với merge ----
   merge(repoRoot: string, target: string, strategy: MergeStrategy): Promise<MergeResult>;

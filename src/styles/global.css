@@ -1282,6 +1282,24 @@ button {
   display: block;
 }
 
+/* Split-button Push: nút chính + mũi tên nhỏ dính liền (menu Push to…). */
+.sg-toolbar-split {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.sg-toolbar-split .sg-toolbar-btn {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.sg-toolbar-arrow {
+  padding: 4px 3px;
+  border-radius: 0 4px 4px 0;
+  margin-left: -1px;
+}
+
 /* ===== Dialog Merge/Rebase (pattern D1: nút hành động dọc, rõ nghĩa) ===== */
 
 .sg-modal.wide {
@@ -1349,6 +1367,61 @@ button {
   font-size: 11px;
   color: var(--sg-fg-dim);
   font-family: var(--sg-mono);
+}
+
+/* ===== Dialog chọn 1 phương án (popup Pull / Reset — radio + OK/Cancel) ===== */
+
+.sg-choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.sg-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--sg-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.sg-choice:hover {
+  background: var(--sg-row-hover);
+}
+
+.sg-choice.selected {
+  border-color: var(--vscode-focusBorder, var(--sg-border));
+  background: var(--sg-row-hover);
+}
+
+.sg-choice input {
+  margin: 2px 0 0;
+  accent-color: var(--vscode-focusBorder);
+}
+
+.sg-choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sg-choice-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sg-choice-detail {
+  font-size: 11px;
+  color: var(--sg-fg-dim);
+  font-family: var(--sg-mono);
+}
+
+/* Phương án phá huỷ (reset --hard): nhãn đỏ để user khựng lại trước khi OK. */
+.sg-choice.danger .sg-choice-label {
+  color: var(--sg-error);
 }
 
 /* ===== Focus 2 pane trong History: list commit ↔ changed files ===== */

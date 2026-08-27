@@ -43,11 +43,16 @@ interface Props {
   targets: string[];
   /** Chọn sẵn (mở từ context menu nhánh); không có thì lấy ref đầu danh sách. */
   initialTarget?: string;
+  /**
+   * Nguồn cố định (merge 1 COMMIT từ context menu History): hiện nhãn đậm này
+   * thay cho <select> — initialTarget là giá trị thật (oid) gửi cho git.
+   */
+  targetLabel?: string;
   onSubmit(target: string, strategy: MergeStrategy): void;
   onClose(): void;
 }
 
-export function MergeDialog({ kind, currentBranch, targets, initialTarget, onSubmit, onClose }: Props) {
+export function MergeDialog({ kind, currentBranch, targets, initialTarget, targetLabel, onSubmit, onClose }: Props) {
   const [target, setTarget] = useState(initialTarget ?? targets[0] ?? '');
   const current = currentBranch ?? '(detached HEAD)';
   const canRun = target !== '';
@@ -75,13 +80,22 @@ export function MergeDialog({ kind, currentBranch, targets, initialTarget, onSub
         <div className="sg-modal-desc">
           {kind === 'merge' ? (
             <>
-              Merge <RefSelect value={target} targets={targets} onChange={setTarget} /> into{' '}
-              <b>{current}</b>
+              Merge{' '}
+              {targetLabel !== undefined ? (
+                <b>{targetLabel}</b>
+              ) : (
+                <RefSelect value={target} targets={targets} onChange={setTarget} />
+              )}{' '}
+              into <b>{current}</b>
             </>
           ) : (
             <>
               Rebase <b>{current}</b> onto{' '}
-              <RefSelect value={target} targets={targets} onChange={setTarget} />
+              {targetLabel !== undefined ? (
+                <b>{targetLabel}</b>
+              ) : (
+                <RefSelect value={target} targets={targets} onChange={setTarget} />
+              )}
             </>
           )}
         </div>

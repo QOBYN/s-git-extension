@@ -1,19 +1,26 @@
-// Khung panel chính: [repo tabs] / [toolbar Fetch/Pull/Push/Merge/Rebase — A1]
-// / [toggle Working Tree | History — ui-analysis A2] / thân màn hình / [status bar].
+// Khung panel chính: [repo tabs] / [toolbar Fetch/Pull/Push — A1] / [toggle
+// Working Tree | History — ui-analysis A2] / thân màn hình / [status bar].
 // Working Tree và History dùng chung khung này.
+// (Merge/Reset chuyển vào context menu commit của History — ít dùng ở toolbar.)
 
 import { useEffect, useState } from 'react';
+import { ContextMenu, type MenuState } from '../components/ContextMenu';
 import { FeedbackDialog } from '../components/FeedbackDialog';
-import { MergeDialog } from '../components/MergeDialog';
+import { PullDialog } from '../components/PullDialog';
+import { PushToDialog } from '../components/PushToDialog';
 import { useRepoStore } from '../store/repoStore';
 import { HistoryScreen } from './HistoryScreen';
 import { WorkingTreeScreen } from './WorkingTreeScreen';
 
 export function MainScreen() {
   const store = useRepoStore();
-  /** Dialog Merge/Rebase đang mở (từ toolbar) — null = đóng. */
-  const [dialog, setDialog] = useState<'merge' | 'rebase' | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  /** Popup Pull (chọn merge/rebase/ff-only — nhớ lựa chọn cũ). */
+  const [pullOpen, setPullOpen] = useState(false);
+  /** Dialog "Push to…" (từ menu mũi tên của nút Push). */
+  const [pushToOpen, setPushToOpen] = useState(false);
+  /** Menu nhỏ dưới mũi tên của nút Push. */
+  const [pushMenu, setPushMenu] = useState<MenuState | null>(null);
 
   useEffect(() => {
     void useRepoStore.getState().init();
@@ -21,10 +28,17 @@ export function MainScreen() {
 
   const changedCount = store.status?.files.length ?? 0;
   const activeRepo = store.repos.find((r) => r.root === store.activeRepoRoot) ?? null;
-  // Nguồn merge/rebase: nhánh local + remote, trừ nhánh đang checkout.
-  const mergeTargets = store.refs
-    .filter((r) => r.kind !== 'tag' && !r.isHead)
-    .map((r) => r.name);
+
+  /** Menu của mũi tên Push — mở tại mép dưới nút; remotes nạp trước cho dialog. */
+  const openPushMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    void store.loadAllRemotes(); // dialog Push to cần danh sách remote
+    setPushMenu({
+      x: rect.left,
+      y: rect.bottom + 2,
+      entries: [{ label: 'Push to…', onClick: () => setPushToOpen(true) }],
+    });
+  };
 
   return (
     <div className="sg-app">
@@ -69,33 +83,29 @@ export function MainScreen() {
         />
         <ToolbarButton
           label="Pull"
-          title="git pull"
+          title="git pull — chọn cách hoà (merge/rebase/ff-only)…"
           disabled={activeRepo === null || store.loading}
-          onClick={() => void store.remoteOp('pull')}
+          onClick={() => setPullOpen(true)}
           icon={<PullIcon />}
         />
-        <ToolbarButton
-          label="Push"
-          title="git push (tự set upstream nếu chưa có)"
-          disabled={activeRepo === null || store.loading}
-          onClick={() => void store.remoteOp('push')}
-          icon={<PushIcon />}
-        />
-        <span className="sg-tool-sep" />
-        <ToolbarButton
-          label="Merge"
-          title="Merge nhánh khác vào nhánh hiện tại…"
-          disabled={activeRepo === null || store.loading || mergeTargets.length === 0}
-          onClick={() => setDialog('merge')}
-          icon={<MergeIcon />}
-        />
-        <ToolbarButton
-          label="Rebase"
-          title="Rebase nhánh hiện tại lên nhánh khác…"
-          disabled={activeRepo === null || store.loading || mergeTargets.length === 0}
-          onClick={() => setDialog('rebase')}
-          icon={<RebaseIcon />}
-        />
+        {/* Push là split-button: bấm chính = push thường; mũi tên = menu Push to… */}
+        <div className="sg-toolbar-split">
+          <ToolbarButton
+            label="Push"
+            title="git push (tự set upstream nếu chưa có)"
+            disabled={activeRepo === null || store.loading}
+            onClick={() => void store.remoteOp('push')}
+            icon={<PushIcon />}
+          />
+          <button
+            className="sg-toolbar-btn sg-toolbar-arrow"
+            title="Tuỳ chọn push…"
+            disabled={activeRepo === null || store.loading}
+            onClick={openPushMenu}
+          >
+            <ChevronDownIcon />
+          </button>
+        </div>
         {/* Feedback đứng riêng ở mép phải — không phải thao tác git. */}
         <span className="sg-diff-spacer" />
         <ToolbarButton
@@ -111,17 +121,22 @@ export function MainScreen() {
 
       {store.uiMode === 'workingTree' ? <WorkingTreeScreen /> : <HistoryScreen />}
 
-      {dialog !== null && activeRepo !== null && (
-        <MergeDialog
-          kind={dialog}
+      {pushMenu && <ContextMenu menu={pushMenu} onClose={() => setPushMenu(null)} />}
+
+      {pullOpen && activeRepo !== null && (
+        <PullDialog
           currentBranch={activeRepo.branch}
-          targets={mergeTargets}
-          onSubmit={(target, strategy) =>
-            void (dialog === 'merge'
-              ? store.mergeBranch(activeRepo.root, target, strategy)
-              : store.rebaseBranch(activeRepo.root, target))
-          }
-          onClose={() => setDialog(null)}
+          onSubmit={(mode) => void store.remoteOp('pull', { pullMode: mode })}
+          onClose={() => setPullOpen(false)}
+        />
+      )}
+
+      {pushToOpen && activeRepo !== null && (
+        <PushToDialog
+          remotes={store.remotesByRepo[activeRepo.root] ?? []}
+          currentBranch={activeRepo.branch}
+          onSubmit={(target) => void store.remoteOp('push', { pushTo: target })}
+          onClose={() => setPushToOpen(false)}
         />
       )}
 
@@ -207,14 +222,11 @@ function PushIcon() {
   );
 }
 
-/** 2 node nhập làm 1 (kiểu git-merge của codicon). */
-function MergeIcon() {
+/** Mũi tên nhỏ của split-button Push — mở menu Push to…. */
+function ChevronDownIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      <circle cx="4" cy="3.5" r="1.75" />
-      <circle cx="4" cy="12.5" r="1.75" />
-      <circle cx="12" cy="8" r="1.75" />
-      <path d="M4 5.25c0 3 2.5 2.75 6.25 2.75" />
+    <svg width="10" height="16" viewBox="0 0 10 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <path d="M2 6.5 5 9.5l3-3" />
     </svg>
   );
 }
@@ -224,18 +236,6 @@ function FeedbackIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
       <path d="M13.5 3.5v6a1.5 1.5 0 0 1-1.5 1.5H7l-3.5 2.5V11H4a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 4 2h8a1.5 1.5 0 0 1 1.5 1.5Z" />
-    </svg>
-  );
-}
-
-/** Node được nhấc lên đặt lại trên gốc mới. */
-function RebaseIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      <circle cx="8" cy="3" r="1.75" />
-      <circle cx="8" cy="13" r="1.75" />
-      <path d="M8 4.75v3" />
-      <path d="M6.25 9.25 8 11l1.75-1.75" />
     </svg>
   );
 }
