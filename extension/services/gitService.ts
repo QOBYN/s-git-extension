@@ -5,6 +5,7 @@
 import { createHash } from 'node:crypto';
 import { DEFAULT_LOG_PAGE_SIZE } from '../../shared/constants';
 import type {
+  CheckoutOptions,
   CommitFileChange,
   LogOptions,
   LogPage,
@@ -234,8 +235,60 @@ export class GitService {
     await this.runner.run(root, ['restore', '--', ...paths], { exclusive: true });
   }
 
-  async checkout(root: string, ref: string): Promise<void> {
-    await this.runner.run(root, ['checkout', ref], { exclusive: true });
+  /**
+   * Checkout + đồng bộ submodule: git không tự cập nhật working tree submodule
+   * theo con trỏ của commit mới (không dùng --recurse-submodules) nên phải tự
+   * chạy `submodule update --init` sau checkout. Quy tắc an toàn:
+   *  - force (Discard): update --force — reset cả con trỏ đang lệch, đúng ý
+   *    "bỏ mọi thay đổi chưa commit" mà popup đã cảnh báo.
+   *  - thường: CHỈ update khi trước checkout không submodule nào có thay đổi
+   *    local (con trỏ lệch/dirty) — thay đổi đó stash không cất được, user chọn
+   *    mang theo thì update sẽ xoá mất.
+   */
+  async checkout(root: string, ref: string, opts: CheckoutOptions = {}): Promise<void> {
+    const subPaths = await this.listSubmodulePaths(root);
+    const syncSubmodules =
+      subPaths.length > 0 && (opts.force || !(await this.hasSubmoduleChanges(root)));
+    const args = opts.force ? ['checkout', '--force', ref] : ['checkout', ref];
+    await this.runner.run(root, args, { exclusive: true });
+    if (syncSubmodules) {
+      const subArgs = ['submodule', 'update', '--init'];
+      if (opts.force) {
+        subArgs.push('--force');
+      }
+      await this.runner.run(root, subArgs, { exclusive: true });
+    }
+  }
+
+  /**
+   * Working tree đang có submodule thay đổi (con trỏ lệch / nội dung dirty)?
+   * Porcelain v2: entry của submodule có field <sub> bắt đầu bằng 'S'
+   * (vd "1 .M SC.. …" = con trỏ lệch) — chỉ file thay đổi mới có entry.
+   */
+  private async hasSubmoduleChanges(root: string): Promise<boolean> {
+    const out = await this.runner.run(root, ['status', '--porcelain=v2', '-z']);
+    return out.split('\0').some((line) => /^[12u] .. S/.test(line));
+  }
+
+  /**
+   * Tạm cất mọi thay đổi chưa commit (kể cả untracked) — bước "stash & re-apply"
+   * của popup Checkout. Trả về CÓ TẠO STASH HAY KHÔNG: thay đổi chỉ nằm ở
+   * con trỏ submodule (stash không cất được) hoặc working tree sạch thì git in
+   * "No local changes to save", exit 0 và KHÔNG tạo entry — caller phải bỏ qua
+   * bước `stash pop` kẻo lỗi "No stash entries found" (LC_ALL=C nên message ổn định).
+   */
+  async stashPush(root: string, message?: string): Promise<boolean> {
+    const args = ['stash', 'push', '--include-untracked'];
+    if (message !== undefined) {
+      args.push('-m', message);
+    }
+    const out = await this.runner.run(root, args, { exclusive: true });
+    return !out.includes('No local changes to save');
+  }
+
+  /** Re-apply stash mới nhất rồi xoá khỏi stack; conflict → git giữ stash + ném lỗi. */
+  async stashPop(root: string): Promise<void> {
+    await this.runner.run(root, ['stash', 'pop'], { exclusive: true });
   }
 
   /** Add Branch tại 1 commit (context menu E) — không checkout sang nhánh mới. */

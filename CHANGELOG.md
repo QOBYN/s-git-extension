@@ -8,6 +8,25 @@ dùng đọc — mô tả thay đổi nhìn thấy được, không phải tên 
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-08-27
+
+### Added
+
+- Double-click một dòng commit trong History (hoặc menu **Check Out…**) mở popup checkout:
+  chọn checkout nhánh local tại commit đó hay detached HEAD; nếu đang có thay đổi chưa
+  commit thì chọn luôn cách xử lý — **Stash & re-apply / Mang theo / Discard** (ghi nhớ lựa chọn)
+- Double-click nhánh trong sidebar (hoặc menu **Check Out…**) dùng cùng popup checkout đó —
+  click đơn vẫn mở History của nhánh như cũ; hoạt động cả với nhánh trong submodule
+- Khi git từ chối pull/merge/rebase/checkout vì có thay đổi chưa commit
+  (vd `cannot pull with rebase: You have unstaged changes`), popup hiện rõ lý do và cho xử lý
+  ngay: **Stash & Retry** (tự stash → chạy lại → re-apply) hoặc mở Working Tree để commit trước
+- Checkout tự đồng bộ submodule theo commit mới (`git submodule update --init`);
+  chọn **Discard** thì reset cả con trỏ submodule đang lệch
+
+### Fixed
+
+- Lỗi git trong banner hiển thị `[object Object]` — giờ hiện nguyên văn thông báo của git
+
 ## [0.0.2] - 2026-08-27
 
 ### Added
@@ -30,5 +49,6 @@ dùng đọc — mô tả thay đổi nhìn thấy được, không phải tên 
 - Bỏ nút Merge / Rebase khỏi toolbar (ít dùng) — merge/rebase nhánh vẫn ở context menu
   nhánh trong sidebar, merge một commit nằm ở context menu History
 
-[Unreleased]: https://github.com/QOBYN/s-git-extension/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/QOBYN/s-git-extension/compare/v0.0.3...HEAD
+[0.0.3]: https://github.com/QOBYN/s-git-extension/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/QOBYN/s-git-extension/commits/v0.0.2

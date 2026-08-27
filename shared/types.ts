@@ -158,6 +158,17 @@ export type PullMode = 'merge' | 'rebase' | 'ff-only';
 /** Kiểu reset của dialog Reset tại commit (context menu History). */
 export type ResetMode = 'soft' | 'mixed' | 'hard';
 
+/** Tuỳ chọn checkout — force bỏ mọi thay đổi local (popup Checkout đã cảnh báo). */
+export interface CheckoutOptions {
+  force?: boolean;
+}
+
+/**
+ * Popup Checkout: cách xử lý thay đổi chưa commit trước khi checkout
+ * (double-click dòng log / menu Check Out… — nhớ lựa chọn lần trước).
+ */
+export type CheckoutDirtyAction = 'stash-reapply' | 'bring' | 'discard';
+
 /** Đích của "Push to…": đẩy HEAD lên nhánh chỉ định trên remote (tạo mới nếu chưa có). */
 export interface PushTarget {
   remote: string;

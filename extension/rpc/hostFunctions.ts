@@ -133,7 +133,9 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
     commit: (repoRoot, message, opts) => git.commit(repoRoot, message, opts),
 
     discard: (repoRoot, paths) => git.discard(repoRoot, paths),
-    checkout: (repoRoot, ref) => git.checkout(repoRoot, ref),
+    checkout: (repoRoot, ref, opts) => git.checkout(repoRoot, ref, opts),
+    stashPush: (repoRoot, message) => git.stashPush(repoRoot, message),
+    stashPop: (repoRoot) => git.stashPop(repoRoot),
     createBranch: (repoRoot, name, oid) => git.createBranch(repoRoot, name, oid),
     createTag: (repoRoot, name, oid) => git.createTag(repoRoot, name, oid),
     deleteBranch: (repoRoot, name) => git.deleteBranch(repoRoot, name),

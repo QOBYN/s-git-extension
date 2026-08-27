@@ -17,6 +17,8 @@ interface Props {
   onSelect(oid: string): void;
   /** Chuột phải mở context menu (ui-analysis E) — parent quản lý menu state. */
   onContextMenu?(event: React.MouseEvent, commit: CommitInfo): void;
+  /** Double-click mở popup Checkout (giống double-click nhánh ở sidebar). */
+  onDoubleClick?(commit: CommitInfo): void;
 }
 
 export const CommitRow = memo(function CommitRow({
@@ -26,12 +28,14 @@ export const CommitRow = memo(function CommitRow({
   selected,
   onSelect,
   onContextMenu,
+  onDoubleClick,
 }: Props) {
   return (
     <div
       className={`sg-commit-row${selected ? ' selected' : ''}`}
       style={{ height: ROW_HEIGHT }}
       onClick={() => onSelect(commit.oid)}
+      onDoubleClick={() => onDoubleClick?.(commit)}
       onContextMenu={(event) => {
         if (onContextMenu) {
           event.preventDefault();

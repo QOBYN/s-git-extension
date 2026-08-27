@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { ContextMenu, type MenuState } from '../components/ContextMenu';
+import { DirtyGuardDialog } from '../components/DirtyGuardDialog';
 import { FeedbackDialog } from '../components/FeedbackDialog';
 import { PullDialog } from '../components/PullDialog';
 import { PushToDialog } from '../components/PushToDialog';
@@ -122,6 +123,16 @@ export function MainScreen() {
       {store.uiMode === 'workingTree' ? <WorkingTreeScreen /> : <HistoryScreen />}
 
       {pushMenu && <ContextMenu menu={pushMenu} onClose={() => setPushMenu(null)} />}
+
+      {store.dirtyGuard !== null && (
+        <DirtyGuardDialog
+          opLabel={store.dirtyGuard.opLabel}
+          message={store.dirtyGuard.message}
+          onStashRetry={() => void store.retryDirtyGuardWithStash()}
+          onGoCommit={() => store.dirtyGuardGoCommit()}
+          onClose={() => store.dismissDirtyGuard()}
+        />
+      )}
 
       {pullOpen && activeRepo !== null && (
         <PullDialog

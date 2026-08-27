@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CommitFileChange, CommitInfo } from '../../shared/types';
 import { BranchFilter } from '../components/BranchFilter';
+import { CheckoutDialog } from '../components/CheckoutDialog';
 import { CommitDetail } from '../components/CommitDetail';
 import { CommitRow } from '../components/CommitRow';
 import { ContextMenu, type MenuState } from '../components/ContextMenu';
@@ -36,8 +37,16 @@ export function HistoryScreen() {
   const [mergeOid, setMergeOid] = useState<string | null>(null);
   /** Dialog Reset nhánh hiện tại về commit (context menu) — oid đích. */
   const [resetOid, setResetOid] = useState<string | null>(null);
+  /** Popup Checkout (double-click dòng log / menu Check Out…) — oid đích. */
+  const [checkoutOid, setCheckoutOid] = useState<string | null>(null);
 
   const activeRepo = store.repos.find((r) => r.root === store.activeRepoRoot) ?? null;
+
+  /** Mở popup Checkout: refetch status trước để đếm change chưa commit chính xác. */
+  const openCheckout = (commit: CommitInfo) => {
+    void store.refreshStatus();
+    setCheckoutOid(commit.oid);
+  };
 
   /** Context menu commit — mục E: nhóm separator, hint phím tắt, disable ≠ ẩn. */
   const openCommitMenu = (event: React.MouseEvent, commit: CommitInfo) => {
@@ -48,7 +57,8 @@ export function HistoryScreen() {
         {
           label: 'Check Out…',
           hint: '⌘G',
-          onClick: () => void store.checkoutBranch(commit.oid),
+          disabled: store.loading,
+          onClick: () => openCheckout(commit),
         },
         {
           label: 'Merge…',
@@ -134,6 +144,8 @@ export function HistoryScreen() {
   const slice = useVirtualList(visibleCommits.length, ROW_HEIGHT, viewportHeight);
 
   const selected = store.commits.find((c) => c.oid === store.selectedOid) ?? null;
+  /** Commit của popup Checkout — tra lại từ danh sách để có subject/refs. */
+  const checkoutCommit = store.commits.find((c) => c.oid === checkoutOid) ?? null;
 
   /**
    * ↑/↓ trong diff chạm biên change đầu/cuối → chuyển file trước/sau TRONG CÙNG
@@ -271,6 +283,7 @@ export function HistoryScreen() {
                   void store.selectCommit(oid);
                 }}
                 onContextMenu={openCommitMenu}
+                onDoubleClick={openCheckout}
               />
             ))}
             <div style={{ height: slice.bottomPad }} />
@@ -323,6 +336,44 @@ export function HistoryScreen() {
       )}
 
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {checkoutCommit !== null && activeRepo !== null && (
+        <CheckoutDialog
+          description={
+            <>
+              Check out <b>{checkoutCommit.oid.slice(0, 7)}</b> — {checkoutCommit.subject}
+            </>
+          }
+          // Nhánh local trỏ đúng commit này (trừ nhánh đang checkout) — ưu tiên
+          // checkout theo tên; luôn kèm lựa chọn detached HEAD tại commit.
+          targets={[
+            ...store.refs
+              .filter((r) => r.kind === 'local' && r.oid === checkoutCommit.oid && !r.isHead)
+              .map((r) => ({
+                value: r.name,
+                label: `Branch ‘${r.name}’`,
+                detail: 'nhánh local trỏ tại commit này',
+              })),
+            {
+              value: checkoutCommit.oid,
+              label: `Commit ${checkoutCommit.oid.slice(0, 7)}`,
+              detail: 'detached HEAD — không đứng trên nhánh nào',
+            },
+          ]}
+          note={
+            store.refs.some(
+              (r) => r.kind === 'local' && r.oid === checkoutCommit.oid && !r.isHead,
+            ) ? undefined : (
+              <>
+                HEAD sẽ ở trạng thái <b>detached</b> tại {checkoutCommit.oid.slice(0, 7)} (không
+                có nhánh local nào tại commit này).
+              </>
+            )
+          }
+          changedCount={store.status?.files.length ?? 0}
+          onSubmit={(ref, dirty) => void store.checkoutCommit(activeRepo.root, ref, dirty)}
+          onClose={() => setCheckoutOid(null)}
+        />
+      )}
       {mergeOid !== null && activeRepo !== null && (
         <MergeDialog
           kind="merge"

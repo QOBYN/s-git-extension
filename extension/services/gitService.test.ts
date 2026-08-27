@@ -157,6 +157,97 @@ describe('GitService — thao tác ghi', () => {
     expect(amended.args).toContain('--amend');
     expect(normal.opts.exclusive).toBe(true);
   });
+
+  it('checkout: --force chỉ thêm khi popup chọn discard', async () => {
+    const runner = new FakeGitRunner(() => '');
+    const git = new GitService(runner);
+
+    await git.checkout('/repo', 'main');
+    await git.checkout('/repo', 'main', { force: true });
+
+    const [plain, forced] = runner.callsOf('checkout');
+    expect(plain.args).toEqual(['checkout', 'main']);
+    expect(forced.args).toEqual(['checkout', '--force', 'main']);
+    expect(plain.opts.exclusive).toBe(true);
+    // Repo không có submodule (config trả rỗng) → không chạy submodule update.
+    expect(runner.callsOf('submodule')).toHaveLength(0);
+  });
+
+  it('checkout repo có submodule + sạch → submodule update --init SAU checkout', async () => {
+    const runner = new FakeGitRunner((args) => {
+      if (args[0] === 'config') {
+        return 'submodule.libsub.path\nlibsub\0'; // repo có 1 submodule
+      }
+      return ''; // status sạch, checkout OK
+    });
+
+    await new GitService(runner).checkout('/repo', 'main');
+
+    const update = runner.callsOf('submodule')[0];
+    expect(update.args).toEqual(['submodule', 'update', '--init']);
+    expect(update.opts.exclusive).toBe(true);
+    // update phải chạy SAU checkout (đồng bộ theo con trỏ của commit mới).
+    const order = runner.calls.map((c) => c.args[0]);
+    expect(order.indexOf('checkout')).toBeLessThan(order.indexOf('submodule'));
+  });
+
+  it('checkout thường KHÔNG update khi submodule đang có thay đổi local (giữ cho user)', async () => {
+    const runner = new FakeGitRunner((args) => {
+      if (args[0] === 'config') {
+        return 'submodule.libsub.path\nlibsub\0';
+      }
+      if (args[0] === 'status') {
+        return '1 .M SC.. 160000 160000 160000 aaa bbb libsub\0'; // con trỏ lệch
+      }
+      return '';
+    });
+
+    await new GitService(runner).checkout('/repo', 'main');
+
+    expect(runner.callsOf('submodule')).toHaveLength(0);
+  });
+
+  it('checkout --force (Discard) → submodule update --init --force, bỏ qua check status', async () => {
+    const runner = new FakeGitRunner((args) => {
+      if (args[0] === 'config') {
+        return 'submodule.libsub.path\nlibsub\0';
+      }
+      return '';
+    });
+
+    await new GitService(runner).checkout('/repo', 'main', { force: true });
+
+    expect(runner.callsOf('status')).toHaveLength(0); // force không cần biết trạng thái
+    expect(runner.callsOf('submodule')[0].args).toEqual([
+      'submodule',
+      'update',
+      '--init',
+      '--force',
+    ]);
+  });
+
+  it('stashPush gồm untracked (-u) + message; stashPop là stash pop — đều exclusive', async () => {
+    const runner = new FakeGitRunner(() => 'Saved working directory and index state');
+    const git = new GitService(runner);
+
+    const stashed = await git.stashPush('/repo', 'auto-stash');
+    await git.stashPop('/repo');
+
+    expect(stashed).toBe(true);
+    const [push, pop] = runner.callsOf('stash');
+    expect(push.args).toEqual(['stash', 'push', '--include-untracked', '-m', 'auto-stash']);
+    expect(pop.args).toEqual(['stash', 'pop']);
+    expect(push.opts.exclusive).toBe(true);
+    expect(pop.opts.exclusive).toBe(true);
+  });
+
+  it('stashPush trả false khi git không cất được gì (vd chỉ đổi con trỏ submodule)', async () => {
+    const runner = new FakeGitRunner(() => 'No local changes to save\n');
+
+    const stashed = await new GitService(runner).stashPush('/repo');
+
+    expect(stashed).toBe(false);
+  });
 });
 
 describe('GitService — log theo file (File Log, ui-analysis C)', () => {

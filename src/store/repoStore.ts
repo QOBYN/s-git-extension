@@ -4,6 +4,7 @@
 
 import { create } from 'zustand';
 import type {
+  CheckoutDirtyAction,
   CommitFileChange,
   CommitInfo,
   DiffPayload,
@@ -21,7 +22,24 @@ import type {
   WorkingTreeStatus,
 } from '../../shared/types';
 import { host, setNotificationHandlers } from '../rpc';
+import { formatError, isDirtyWorkingTreeError } from '../utils/errors';
 import { buildHunkPatch, type LineChange } from '../utils/patchBuilder';
+
+/**
+ * Popup Dirty Guard: git TỪ CHỐI 1 thao tác (pull/merge/rebase/checkout…) vì
+ * working tree có thay đổi chưa commit — thay vì banner lỗi thô, popup cho user
+ * biết và chọn cách xử lý ngay (stash & retry / đi commit / bỏ qua).
+ */
+export interface DirtyGuard {
+  /** Nhãn thao tác bị chặn — "Pull (rebase)", "Merge 'dev'"… */
+  opLabel: string;
+  /** stderr nguyên văn của git. */
+  message: string;
+  /** Repo mà thao tác chạy trên đó (từ sidebar có thể khác repo active). */
+  repoRoot: string;
+  /** Chạy lại thao tác gốc (sau khi đã stash). */
+  retry(): Promise<void>;
+}
 
 /** 2 màn hình của panel chính — toggle Local Files | History của SmartGit (A2). */
 export type UiMode = PanelMode;
@@ -81,6 +99,15 @@ interface RepoStoreState {
   statusMessage: string;
   loading: boolean;
   error: string | null;
+  /** Popup "working tree bẩn" đang chờ user quyết — null = không có. */
+  dirtyGuard: DirtyGuard | null;
+
+  /** Popup Dirty Guard: Stash & Retry — stash → thao tác gốc → stash pop. */
+  retryDirtyGuardWithStash(): Promise<void>;
+  /** Đóng popup Dirty Guard; lỗi gốc chuyển về banner để không mất thông tin. */
+  dismissDirtyGuard(): void;
+  /** Popup Dirty Guard: "Commit trước" — đóng popup + đưa tới Working Tree. */
+  dirtyGuardGoCommit(): void;
 
   init(): Promise<void>;
   initSidebar(): Promise<void>;
@@ -97,7 +124,15 @@ interface RepoStoreState {
   toggleHistoryRef(ref: string): Promise<void>;
   /** Bỏ hết lọc — quay về mọi nhánh (--all). */
   clearHistoryRefs(): Promise<void>;
-  checkoutBranch(name: string): Promise<void>;
+  /**
+   * Checkout từ popup Checkout (double-click dòng log / menu Check Out… của
+   * History, hoặc double-click nhánh ở sidebar — nên nhận repoRoot tường minh):
+   * `dirty` là cách xử lý thay đổi chưa commit — stash & re-apply / mang theo /
+   * discard (--force). Working tree sạch thì dirty nào cũng như 'bring'.
+   */
+  checkoutCommit(repoRoot: string, ref: string, dirty: CheckoutDirtyAction): Promise<void>;
+  /** Refetch status repo active — popup Checkout gọi lúc mở để đếm change chính xác. */
+  refreshStatus(): Promise<void>;
   /** Context menu commit (E): Add Branch/Tag tại commit; refs refresh sau khi tạo. */
   createBranchAt(name: string, oid: string): Promise<void>;
   createTagAt(name: string, oid: string): Promise<void>;
@@ -116,8 +151,6 @@ interface RepoStoreState {
   loadAllFolders(): Promise<void>;
   /** Sidebar: nạp status mọi repo (badge số change). */
   loadAllStatuses(): Promise<void>;
-  /** Sidebar: checkout nhánh của 1 repo bất kỳ (không cần activeRepo). */
-  sidebarCheckout(repoRoot: string, name: string): Promise<void>;
   /** Sidebar: chạy 1 thao tác git bất kỳ + refresh refs/status/repos. */
   sidebarGitOp(op: () => Promise<void>, successMessage: string): Promise<void>;
   setCommitSearch(search: string | null): void;
@@ -218,7 +251,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
         statusMessage: 'Ready',
       }));
     } catch (error) {
-      set({ loading: false, error: String(error) });
+      set({ loading: false, error: formatError(error) });
     }
   }
 
@@ -226,7 +259,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     try {
       set({ refs: await host.listRefs(root) });
     } catch (error) {
-      set({ error: String(error) });
+      set({ error: formatError(error) });
     }
   }
 
@@ -239,7 +272,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
         set({ commitMessage: status.activityMessage });
       }
     } catch (error) {
-      set({ error: String(error) });
+      set({ error: formatError(error) });
     }
   }
 
@@ -254,7 +287,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
       await action();
       set({ statusMessage: successMessage });
     } catch (error) {
-      set({ error: String(error) });
+      set({ error: formatError(error) });
     }
     // Watcher .git cũng sẽ bắn repoChanged, nhưng refetch ngay cho phản hồi tức thì.
     await fetchStatus(root);
@@ -293,6 +326,78 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     statusMessage: 'Loading…',
     loading: false,
     error: null,
+    dirtyGuard: null,
+
+    async retryDirtyGuardWithStash() {
+      const guard = get().dirtyGuard;
+      if (guard === null || get().loading) {
+        return;
+      }
+      const { repoRoot: root, opLabel, retry } = guard;
+      set({ dirtyGuard: null, error: null, loading: true, statusMessage: `Stash & retry ${opLabel}…` });
+      /** Re-apply stash bị conflict — thao tác VẪN thành công, chỉ cảnh báo thêm. */
+      let popConflict: string | null = null;
+      /** Retry hỏng nhưng KHÔNG dám pop (repo có thể đang dở conflict) — nhắc user stash còn đó. */
+      let stashNote: string | null = null;
+      try {
+        const stashed = await host.stashPush(root, `s-git: auto-stash before ${opLabel}`);
+        try {
+          await retry();
+        } catch (error) {
+          if (stashed) {
+            if (isDirtyWorkingTreeError(formatError(error))) {
+              // Lệnh lại bị TỪ CHỐI ngay (chưa chạy gì — vd chỉ còn thay đổi con
+              // trỏ submodule, stash không cất được) → pop trả working tree như cũ.
+              await host.stashPop(root).catch(() => undefined);
+            } else {
+              // Lệnh có thể dừng GIỮA CHỪNG (pull --rebase conflict…) — pop ngay
+              // sẽ trộn stash vào cây đang conflict. Giữ stash và nói rõ.
+              stashNote = `${opLabel} failed — thay đổi của bạn đang nằm trong stash ('git stash pop' để lấy lại).`;
+            }
+          }
+          throw error;
+        }
+        if (stashed) {
+          try {
+            await host.stashPop(root);
+          } catch (error) {
+            popConflict = formatError(error);
+          }
+        }
+        // Refresh TRƯỚC rồi mới set message chốt — fetchLog thành công set 'Ready' đè lên.
+        await refreshRepoData(root);
+        if (popConflict !== null) {
+          set({
+            error: popConflict,
+            statusMessage: `${opLabel} done — re-apply gặp conflict, thay đổi vẫn nằm trong stash.`,
+          });
+        } else {
+          set({ statusMessage: `${opLabel} completed.` });
+        }
+      } catch (error) {
+        await refreshRepoData(root);
+        set({
+          error: formatError(error),
+          ...(stashNote !== null ? { statusMessage: stashNote } : {}),
+        });
+      }
+      set({ loading: false });
+    },
+
+    dismissDirtyGuard() {
+      const guard = get().dirtyGuard;
+      if (guard !== null) {
+        set({ dirtyGuard: null, error: guard.message });
+      }
+    },
+
+    dirtyGuardGoCommit() {
+      const guard = get().dirtyGuard;
+      if (guard !== null) {
+        set({ dirtyGuard: null, error: guard.message });
+        focusWorkingTree(guard.repoRoot); // sidebar không có Working Tree → mở panel chính
+      }
+    },
 
     async init() {
       set({ loading: true, error: null });
@@ -313,7 +418,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
           set({ statusMessage: 'No git repository in workspace' });
         }
       } catch (error) {
-        set({ loading: false, error: String(error) });
+        set({ loading: false, error: formatError(error) });
       }
     },
 
@@ -330,7 +435,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
           get().loadAllStatuses(),
         ]);
       } catch (error) {
-        set({ loading: false, error: String(error) });
+        set({ loading: false, error: formatError(error) });
       }
     },
 
@@ -386,10 +491,6 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
       set({ statusByRepo: Object.fromEntries(entries) });
     },
 
-    async sidebarCheckout(repoRoot, name) {
-      await get().sidebarGitOp(() => host.checkout(repoRoot, name), `Checked out '${name}'.`);
-    },
-
     /** Khuôn chung cho thao tác git từ sidebar: chạy → báo lỗi/thành công → refresh. */
     async sidebarGitOp(op, successMessage) {
       set({ error: null });
@@ -397,7 +498,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
         await op();
         set({ statusMessage: successMessage });
       } catch (error) {
-        set({ error: String(error) });
+        set({ error: formatError(error) });
       }
       await Promise.all([get().loadAllRefs(), get().loadAllRemotes(), get().loadAllStatuses()]);
       // Danh sách repo cũng có thể đổi (tên nhánh trên header).
@@ -458,7 +559,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
           set({ commitBody: body, commitFiles: files });
         }
       } catch (error) {
-        set({ error: String(error) });
+        set({ error: formatError(error) });
       }
     },
 
@@ -475,7 +576,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
           set({ diff, diffLoading: false });
         }
       } catch (error) {
-        set({ diffLoading: false, error: String(error) });
+        set({ diffLoading: false, error: formatError(error) });
       }
     },
 
@@ -501,12 +602,69 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
       await applyHistoryRefs([]);
     },
 
-    async checkoutBranch(name) {
-      await mutate(() => host.checkout(get().activeRepoRoot!, name), `Checked out '${name}'.`);
-      // Nhánh đổi → log/refs đổi; watcher cũng bắn nhưng refetch ngay cho mượt.
+    async checkoutCommit(repoRoot, ref, dirty) {
+      const root = repoRoot;
+      if (get().loading) {
+        return;
+      }
+      // oid đầy đủ hiển thị rút gọn; tên nhánh giữ nguyên.
+      const short = /^[0-9a-f]{40}$/.test(ref) ? ref.slice(0, 7) : ref;
+      set({ error: null, loading: true, statusMessage: `Checking out '${short}'…` });
+      /** Re-apply stash bị conflict — checkout VẪN thành công, chỉ cảnh báo thêm. */
+      let popConflict: string | null = null;
+      try {
+        if (dirty === 'stash-reapply') {
+          // stashed=false: không có gì cất được (vd chỉ đổi con trỏ submodule —
+          // stash không xử lý gitlink) → checkout thẳng, TUYỆT ĐỐI không pop
+          // kẻo "No stash entries found" làm cả thao tác trông như thất bại.
+          const stashed = await host.stashPush(
+            root,
+            `s-git: auto-stash before checkout '${short}'`,
+          );
+          try {
+            await host.checkout(root, ref);
+          } catch (error) {
+            // Checkout hỏng → pop lại ngay để trả working tree về như cũ.
+            if (stashed) {
+              await host.stashPop(root).catch(() => undefined); // pop hỏng nữa: stash vẫn còn đó
+            }
+            throw error;
+          }
+          if (stashed) {
+            try {
+              await host.stashPop(root);
+            } catch (error) {
+              popConflict = formatError(error);
+            }
+          }
+        } else {
+          await host.checkout(root, ref, dirty === 'discard' ? { force: true } : undefined);
+        }
+        // Refresh TRƯỚC rồi mới set message chốt (như remoteOp) — fetchLog set
+        // 'Ready' đè lên. refreshRepoData tự lo cả trường hợp sidebar (per-repo).
+        await refreshRepoData(root);
+        if (popConflict !== null) {
+          set({
+            error: popConflict,
+            statusMessage: `Checked out '${short}' — re-apply gặp conflict, thay đổi vẫn nằm trong stash.`,
+          });
+        } else {
+          set({ statusMessage: `Checked out '${short}'.` });
+        }
+      } catch (error) {
+        // "Mang theo" đụng file bị checkout ghi đè → popup Dirty Guard xử lý tiếp.
+        if (!guardDirtyError(root, `Checkout '${short}'`, error, () => host.checkout(root, ref))) {
+          set({ error: formatError(error) });
+        }
+        await refreshRepoData(root);
+      }
+      set({ loading: false });
+    },
+
+    async refreshStatus() {
       const root = get().activeRepoRoot;
       if (root !== null) {
-        await Promise.all([fetchLog(root, false), fetchRefs(root)]);
+        await fetchStatus(root);
       }
     },
 
@@ -566,7 +724,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
           set({ workingDiff: diff, workingDiffLoading: false });
         }
       } catch (error) {
-        set({ workingDiffLoading: false, error: String(error) });
+        set({ workingDiffLoading: false, error: formatError(error) });
       }
     },
 
@@ -684,17 +842,24 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
         push: [`Pushing${pushLabel}…`, `Push${pushLabel} completed.`],
       }[kind];
       set({ error: null, loading: true, statusMessage: labels[0] });
+      const run = {
+        fetch: () => host.fetch(root),
+        pull: () => host.pull(root, opts?.pullMode),
+        push: () => host.push(root, opts?.pushTo),
+      }[kind];
       try {
-        await {
-          fetch: () => host.fetch(root),
-          pull: () => host.pull(root, opts?.pullMode),
-          push: () => host.push(root, opts?.pushTo),
-        }[kind]();
+        await run();
         // Refresh TRƯỚC rồi mới set message chốt — fetchLog thành công sẽ set 'Ready' đè lên.
         await Promise.all([fetchLog(root, false), fetchRefs(root), fetchStatus(root)]);
         set({ statusMessage: labels[1] });
       } catch (error) {
-        set({ error: String(error) });
+        // Pull bị từ chối vì working tree bẩn ("cannot pull with rebase: You have
+        // unstaged changes"…) → popup Dirty Guard thay vì banner thô.
+        const opLabel =
+          kind === 'pull' && opts?.pullMode ? `Pull (${opts.pullMode})` : capitalizeOp(kind);
+        if (!guardDirtyError(root, opLabel, error, run)) {
+          set({ error: formatError(error) });
+        }
       }
       set({ loading: false });
     },
@@ -711,7 +876,11 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
           focusWorkingTree(repoRoot);
         }
       } catch (error) {
-        set({ error: String(error) });
+        if (!guardDirtyError(repoRoot, `Merge '${target}'`, error, async () => {
+          await host.merge(repoRoot, target, strategy);
+        })) {
+          set({ error: formatError(error) });
+        }
         await refreshRepoData(repoRoot);
       }
       set({ loading: false });
@@ -734,7 +903,11 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
           });
         }
       } catch (error) {
-        set({ error: String(error) });
+        if (!guardDirtyError(repoRoot, `Rebase onto '${onto}'`, error, async () => {
+          await host.rebase(repoRoot, onto);
+        })) {
+          set({ error: formatError(error) });
+        }
         await refreshRepoData(repoRoot);
       }
       set({ loading: false });
@@ -753,7 +926,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
         await Promise.all([fetchLog(root, false), fetchRefs(root), fetchStatus(root)]);
         set({ statusMessage: `Reset (--${mode}) to ${short}.` });
       } catch (error) {
-        set({ error: String(error) });
+        set({ error: formatError(error) });
       }
       set({ loading: false });
     },
@@ -773,6 +946,25 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     if (root !== null) {
       await fetchLog(root, false);
     }
+  }
+
+  /**
+   * Lỗi thuộc nhóm "git từ chối vì working tree bẩn" → mở popup Dirty Guard
+   * (user chọn stash & retry / đi commit) thay cho banner lỗi thô.
+   * Trả true = đã xử lý, caller đừng set error nữa.
+   */
+  function guardDirtyError(
+    repoRoot: string,
+    opLabel: string,
+    error: unknown,
+    retry: () => Promise<void>,
+  ): boolean {
+    const message = formatError(error);
+    if (!isDirtyWorkingTreeError(message)) {
+      return false;
+    }
+    set({ dirtyGuard: { opLabel, message, repoRoot, retry } });
+    return true;
   }
 
   /** Merge/rebase xong: panel chính refresh repo active, sidebar refresh mọi repo. */
@@ -796,6 +988,9 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     }
   }
 });
+
+/** 'fetch' → 'Fetch' — nhãn thao tác cho popup Dirty Guard/status bar. */
+const capitalizeOp = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Thông điệp status bar sau merge — nói rõ bước tiếp theo khi merge dừng giữa chừng. */
 function mergeMessage(target: string, strategy: MergeStrategy, result: MergeResult): string {

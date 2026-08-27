@@ -9,7 +9,9 @@
 import { useEffect, useState } from 'react';
 import type { RefInfo, RemoteInfo, RepoInfo } from '../../shared/types';
 import { childFolders } from '../../shared/folders';
+import { CheckoutDialog } from '../components/CheckoutDialog';
 import { ContextMenu, type MenuState } from '../components/ContextMenu';
+import { DirtyGuardDialog } from '../components/DirtyGuardDialog';
 import { FeedbackDialog } from '../components/FeedbackDialog';
 import { MergeDialog } from '../components/MergeDialog';
 import { PromptModal } from '../components/PromptModal';
@@ -47,10 +49,20 @@ export function SidebarScreen() {
   const [mergePrompt, setMergePrompt] = useState<MergePrompt | null>(null);
   const [remotePrompt, setRemotePrompt] = useState<RemotePrompt | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  /** Popup Checkout (double-click nhánh / menu Check Out) — nhánh + repo đích. */
+  const [checkoutPrompt, setCheckoutPrompt] = useState<{ repo: RepoInfo; ref: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     void useRepoStore.getState().initSidebar();
   }, []);
+
+  /** Mở popup Checkout: refetch status trước để đếm change chưa commit chính xác. */
+  const openCheckoutPrompt = (repo: RepoInfo, ref: string) => {
+    void store.loadAllStatuses();
+    setCheckoutPrompt({ repo, ref });
+  };
 
   /** Context menu nhánh/tag — cùng pattern menu commit: disable ≠ ẩn, hint bên phải. */
   const openRefMenu = (event: React.MouseEvent, repo: RepoInfo, ref: RefInfo) => {
@@ -61,11 +73,10 @@ export function SidebarScreen() {
       y: event.clientY,
       entries: [
         {
-          label: ref.kind === 'remote' ? 'Checkout Tracking Branch' : 'Check Out',
+          label: ref.kind === 'remote' ? 'Checkout Tracking Branch…' : 'Check Out…',
           hint: '⌘G',
           disabled: ref.kind === 'tag' ? false : ref.isHead,
-          onClick: () =>
-            void store.sidebarCheckout(repo.root, remoteShort ?? ref.name),
+          onClick: () => openCheckoutPrompt(repo, remoteShort ?? ref.name),
         },
         {
           label: 'Open History',
@@ -139,8 +150,6 @@ export function SidebarScreen() {
   const topLevelRepos = store.repos.filter(
     (repo) => !store.repos.some((other) => other !== repo && repo.root.startsWith(other.root + '/')),
   );
-  const submodulesOf = (parent: RepoInfo) =>
-    store.repos.filter((repo) => repo !== parent && repo.root.startsWith(parent.root + '/'));
 
   return (
     <div className="sg-app">
@@ -172,10 +181,11 @@ export function SidebarScreen() {
               <RepoGit
                 key={repo.root}
                 repo={repo}
-                submodules={submodulesOf(repo)}
+                allRepos={store.repos}
                 onRefMenu={openRefMenu}
                 onRepoMenu={openRepoGitMenu}
                 onRemoteMenu={openRemoteMenu}
+                onCheckout={openCheckoutPrompt}
               />
             ))}
           </>
@@ -196,6 +206,41 @@ export function SidebarScreen() {
       {store.error !== null && <div className="sg-error">{store.error}</div>}
 
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {checkoutPrompt !== null && (
+        <CheckoutDialog
+          description={
+            <>
+              Check out <b>{checkoutPrompt.ref}</b> — repo <b>{checkoutPrompt.repo.name}</b>
+              {checkoutPrompt.repo.branch !== null && (
+                <>
+                  {' '}
+                  (đang ở <b>{checkoutPrompt.repo.branch}</b>)
+                </>
+              )}
+            </>
+          }
+          targets={[
+            {
+              value: checkoutPrompt.ref,
+              label: `‘${checkoutPrompt.ref}’`,
+              detail: 'git checkout',
+            },
+          ]}
+          changedCount={(store.statusByRepo[checkoutPrompt.repo.root] ?? []).length}
+          onSubmit={(ref, dirty) => void store.checkoutCommit(checkoutPrompt.repo.root, ref, dirty)}
+          onClose={() => setCheckoutPrompt(null)}
+        />
+      )}
+      {/* Merge/rebase từ sidebar cũng có thể bị chặn vì working tree bẩn. */}
+      {store.dirtyGuard !== null && (
+        <DirtyGuardDialog
+          opLabel={store.dirtyGuard.opLabel}
+          message={store.dirtyGuard.message}
+          onStashRetry={() => void store.retryDirtyGuardWithStash()}
+          onGoCommit={() => store.dirtyGuardGoCommit()}
+          onClose={() => store.dismissDirtyGuard()}
+        />
+      )}
       {feedbackOpen && (
         <FeedbackDialog
           context={{
@@ -377,23 +422,80 @@ function GitSearchBar() {
   );
 }
 
-function RepoGit({
-  repo,
-  submodules,
-  onRefMenu,
-  onRepoMenu,
-  onRemoteMenu,
-}: {
-  repo: RepoInfo;
-  submodules: RepoInfo[];
+/** Menu context dùng chung cho cả repo cha lẫn submodule — nhận repo qua tham số. */
+interface RepoGitMenus {
   onRefMenu(event: React.MouseEvent, repo: RepoInfo, ref: RefInfo): void;
   onRepoMenu(event: React.MouseEvent, repo: RepoInfo): void;
   onRemoteMenu(event: React.MouseEvent, repo: RepoInfo, remote: RemoteInfo): void;
-}) {
+  /** Double-click nhánh local / menu Check Out — mở popup Checkout xác nhận. */
+  onCheckout(repo: RepoInfo, ref: string): void;
+}
+
+/** Submodule TRỰC TIẾP của `parent`: nằm trong parent và không có repo nào chen giữa. */
+function directSubmodulesOf(parent: RepoInfo, allRepos: RepoInfo[]): RepoInfo[] {
+  return allRepos.filter(
+    (sub) =>
+      sub.root.startsWith(parent.root + '/') &&
+      !allRepos.some(
+        (mid) =>
+          mid !== parent &&
+          mid !== sub &&
+          mid.root.startsWith(parent.root + '/') &&
+          sub.root.startsWith(mid.root + '/'),
+      ),
+  );
+}
+
+function RepoGit({
+  repo,
+  allRepos,
+  ...menus
+}: {
+  repo: RepoInfo;
+  allRepos: RepoInfo[];
+} & RepoGitMenus) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  return (
+    <div className="sg-sidebar-repo">
+      <div
+        className="sg-repo-header"
+        title={repo.root}
+        onContextMenu={(e) => menus.onRepoMenu(e, repo)}
+      >
+        <span
+          className={`sg-tree-chevron${collapsed ? '' : ' open'}`}
+          onClick={() => setCollapsed((v) => !v)}
+        />
+        <span className="sg-repo-name" onClick={() => void host.openPanel(repo.root, null, null)}>
+          {repo.name}
+        </span>
+        {repo.activity !== 'none' && <span className="sg-ref-badge tag">{repo.activity}</span>}
+      </div>
+
+      {!collapsed && <RepoGitSections repo={repo} allRepos={allRepos} depth={0} {...menus} />}
+    </div>
+  );
+}
+
+/**
+ * Các section Local Branches / Remotes / Tags / Submodules của 1 repo — dùng cho
+ * cả repo cha (depth 0) lẫn submodule lồng bên trong (depth tăng dần); submodule
+ * đệ quy qua SubmoduleGit nên sub-trong-sub cũng có cây đầy đủ.
+ */
+function RepoGitSections({
+  repo,
+  allRepos,
+  depth,
+  ...menus
+}: {
+  repo: RepoInfo;
+  allRepos: RepoInfo[];
+  depth: number;
+} & RepoGitMenus) {
   const allRefs = useRepoStore((s) => s.refsByRepo[repo.root]) ?? [];
   const declaredRemotes = useRepoStore((s) => s.remotesByRepo[repo.root]) ?? [];
   const filter = useRepoStore((s) => s.sidebarRefFilter).toLowerCase();
-  const [collapsed, setCollapsed] = useState(false);
 
   const refs = filter === '' ? allRefs : allRefs.filter((r) => r.name.toLowerCase().includes(filter));
   const locals = refs.filter((r) => r.kind === 'local');
@@ -409,95 +511,124 @@ function RepoGit({
   const remoteInfoOf = (name: string): RemoteInfo =>
     declaredRemotes.find((r) => r.name === name) ?? { name, url: '' };
 
-  return (
-    <div className="sg-sidebar-repo">
-      <div
-        className="sg-repo-header"
-        title={repo.root}
-        onContextMenu={(e) => onRepoMenu(e, repo)}
-      >
-        <span
-          className={`sg-tree-chevron${collapsed ? '' : ' open'}`}
-          onClick={() => setCollapsed((v) => !v)}
-        />
-        <span className="sg-repo-name" onClick={() => void host.openPanel(repo.root, null, null)}>
-          {repo.name}
-        </span>
-        {repo.activity !== 'none' && <span className="sg-ref-badge tag">{repo.activity}</span>}
-      </div>
+  const submodules = directSubmodulesOf(repo, allRepos);
 
-      {!collapsed && (
-        <>
-          <GitSection title="Local Branches" count={locals.length} defaultOpen>
-            {locals.map((ref) => (
+  return (
+    <>
+      <GitSection title="Local Branches" count={locals.length} depth={depth} defaultOpen>
+        {locals.map((ref) => (
+          <RefRow
+            key={ref.fullName}
+            repo={repo}
+            refInfo={ref}
+            display={ref.name}
+            depth={depth + 2}
+            onContextMenu={menus.onRefMenu}
+            onCheckout={menus.onCheckout}
+          />
+        ))}
+      </GitSection>
+
+      {[...remotes.entries()]
+        // Đang filter thì ẩn remote không có ref khớp (giữ danh sách gọn).
+        .filter(([, members]) => filter === '' || members.length > 0)
+        .map(([remote, members]) => (
+          <GitSection
+            key={remote}
+            title={`☁ ${remote}`}
+            count={members.length}
+            depth={depth}
+            onContextMenu={(e) => menus.onRemoteMenu(e, repo, remoteInfoOf(remote))}
+          >
+            {members.map((ref) => (
               <RefRow
                 key={ref.fullName}
                 repo={repo}
                 refInfo={ref}
-                display={ref.name}
-                depth={2}
-                onContextMenu={onRefMenu}
+                display={ref.name.slice(remote.length + 1)}
+                depth={depth + 2}
+                onContextMenu={menus.onRefMenu}
+            onCheckout={menus.onCheckout}
               />
             ))}
           </GitSection>
+        ))}
 
-          {[...remotes.entries()]
-            // Đang filter thì ẩn remote không có ref khớp (giữ danh sách gọn).
-            .filter(([, members]) => filter === '' || members.length > 0)
-            .map(([remote, members]) => (
-            <GitSection
-              key={remote}
-              title={`☁ ${remote}`}
-              count={members.length}
-              onContextMenu={(e) => onRemoteMenu(e, repo, remoteInfoOf(remote))}
-            >
-              {members.map((ref) => (
-                <RefRow
-                  key={ref.fullName}
-                  repo={repo}
-                  refInfo={ref}
-                  display={ref.name.slice(remote.length + 1)}
-                  depth={2}
-                  onContextMenu={onRefMenu}
-                />
-              ))}
-            </GitSection>
+      {tags.length > 0 && (
+        <GitSection title="Tags" count={tags.length} depth={depth}>
+          {tags.map((ref) => (
+            <RefRow
+              key={ref.fullName}
+              repo={repo}
+              refInfo={ref}
+              display={ref.name}
+              depth={depth + 2}
+              onContextMenu={menus.onRefMenu}
+            onCheckout={menus.onCheckout}
+            />
           ))}
-
-          {tags.length > 0 && (
-            <GitSection title="Tags" count={tags.length}>
-              {tags.map((ref) => (
-                <RefRow
-                  key={ref.fullName}
-                  repo={repo}
-                  refInfo={ref}
-                  display={ref.name}
-                  depth={2}
-                  onContextMenu={onRefMenu}
-                />
-              ))}
-            </GitSection>
-          )}
-
-          {submodules.length > 0 && (
-            <GitSection title="Submodules" count={submodules.length} defaultOpen>
-              {submodules.map((sub) => (
-                <div
-                  key={sub.root}
-                  className="sg-tree-row"
-                  style={{ paddingLeft: 34 }}
-                  onClick={() => void host.openPanel(sub.root, null, null)}
-                  title={sub.root}
-                >
-                  <span className="sg-tree-icon">📦</span>
-                  <span className="sg-tree-label">{sub.root.slice(repo.root.length + 1)}</span>
-                  {sub.branch !== null && <span className="sg-ref-badge">{sub.branch}</span>}
-                </div>
-              ))}
-            </GitSection>
-          )}
-        </>
+        </GitSection>
       )}
+
+      {submodules.length > 0 && (
+        <GitSection title="Submodules" count={submodules.length} depth={depth} defaultOpen>
+          {submodules.map((sub) => (
+            <SubmoduleGit
+              key={sub.root}
+              repo={sub}
+              parentRoot={repo.root}
+              allRepos={allRepos}
+              depth={depth + 1}
+              {...menus}
+            />
+          ))}
+        </GitSection>
+      )}
+    </>
+  );
+}
+
+/**
+ * 1 submodule trong section Submodules: dòng 📦 (click mở panel, chuột phải =
+ * menu repo — Add Remote…) + cây git riêng của nó (nhánh/remote/tag) để thao tác
+ * checkout/merge/fetch… thẳng từ sidebar, không phải mở panel trước.
+ */
+function SubmoduleGit({
+  repo,
+  parentRoot,
+  allRepos,
+  depth,
+  ...menus
+}: {
+  repo: RepoInfo;
+  parentRoot: string;
+  allRepos: RepoInfo[];
+  depth: number;
+} & RepoGitMenus) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div>
+      <div
+        className="sg-tree-row"
+        style={{ paddingLeft: 18 + depth * 12 }}
+        title={`${repo.root} — click: mở panel · chevron: xem nhánh/remote`}
+        onClick={() => void host.openPanel(repo.root, null, null)}
+        onContextMenu={(e) => menus.onRepoMenu(e, repo)}
+      >
+        <span
+          className={`sg-tree-chevron${open ? ' open' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((v) => !v);
+          }}
+        />
+        <span className="sg-tree-icon">📦</span>
+        <span className="sg-tree-label">{repo.root.slice(parentRoot.length + 1)}</span>
+        {repo.branch !== null && <span className="sg-ref-badge">{repo.branch}</span>}
+        {repo.activity !== 'none' && <span className="sg-ref-badge tag">{repo.activity}</span>}
+      </div>
+      {open && <RepoGitSections repo={repo} allRepos={allRepos} depth={depth + 1} {...menus} />}
     </div>
   );
 }
@@ -505,12 +636,15 @@ function RepoGit({
 function GitSection({
   title,
   count,
+  depth = 0,
   defaultOpen,
   onContextMenu,
   children,
 }: {
   title: string;
   count: number;
+  /** Mức lồng: section của submodule thụt vào theo depth (12px/mức). */
+  depth?: number;
   defaultOpen?: boolean;
   onContextMenu?(event: React.MouseEvent): void;
   children: React.ReactNode;
@@ -520,7 +654,7 @@ function GitSection({
     <div>
       <div
         className="sg-tree-row section"
-        style={{ paddingLeft: 18 }}
+        style={{ paddingLeft: 18 + depth * 12 }}
         onClick={() => setOpen(!open)}
         onContextMenu={onContextMenu}
       >
@@ -539,28 +673,30 @@ function RefRow({
   display,
   depth,
   onContextMenu,
+  onCheckout,
 }: {
   repo: RepoInfo;
   refInfo: RefInfo;
   display: string;
   depth: number;
   onContextMenu(event: React.MouseEvent, repo: RepoInfo, ref: RefInfo): void;
+  /** Double-click nhánh local (chưa checkout) — mở popup Checkout xác nhận. */
+  onCheckout(repo: RepoInfo, ref: string): void;
 }) {
-  const store = useRepoStore();
+  // Nhánh đang checkout thì double-click là no-op — không mở popup thừa.
+  const canCheckout = refInfo.kind === 'local' && !refInfo.isHead;
   return (
     <div
       className={`sg-tree-row${refInfo.isHead ? ' head' : ''}`}
       style={{ paddingLeft: 10 + depth * 12 }}
       title={
-        refInfo.kind === 'local'
+        canCheckout
           ? `${refInfo.fullName} — click: open history · double-click: checkout`
           : `${refInfo.fullName} — click: open history`
       }
       onClick={() => void host.openPanel(repo.root, 'history', null, refInfo.name)}
       onContextMenu={(e) => onContextMenu(e, repo, refInfo)}
-      onDoubleClick={
-        refInfo.kind === 'local' ? () => void store.sidebarCheckout(repo.root, refInfo.name) : undefined
-      }
+      onDoubleClick={canCheckout ? () => onCheckout(repo, refInfo.name) : undefined}
     >
       <span className="sg-tree-icon">{refInfo.kind === 'tag' ? '🏷' : '⎇'}</span>
       <span className="sg-tree-label">

@@ -6,6 +6,7 @@
 //    hiển thị stderr, không tự diễn giải.
 
 import type {
+  CheckoutOptions,
   CommitFileChange,
   CommitOptions,
   DiffPayload,
@@ -78,7 +79,20 @@ export interface HostFunctions {
   saveWorkingFile(repoRoot: string, relPath: string, content: string): Promise<void>;
   discard(repoRoot: string, paths: string[]): Promise<void>;
   commit(repoRoot: string, message: string, opts?: CommitOptions): Promise<void>;
-  checkout(repoRoot: string, ref: string): Promise<void>;
+  /**
+   * Checkout; repo có submodule thì tự `submodule update --init` sau đó để repo
+   * con khớp con trỏ mới (bỏ qua khi submodule đang có thay đổi local, trừ force).
+   */
+  checkout(repoRoot: string, ref: string, opts?: CheckoutOptions): Promise<void>;
+  /**
+   * Popup Checkout khi working tree bẩn: tạm cất MỌI thay đổi (kể cả untracked)
+   * trước khi checkout — `git stash push -u`. Trả về có tạo stash hay không:
+   * false khi không có gì cất được (vd chỉ đổi con trỏ submodule) — webview
+   * phải BỎ QUA bước stash pop.
+   */
+  stashPush(repoRoot: string, message?: string): Promise<boolean>;
+  /** Re-apply stash mới nhất sau checkout (`git stash pop`) — conflict ném GitError nguyên văn. */
+  stashPop(repoRoot: string): Promise<void>;
   /** Context menu commit (ui-analysis E): Add Branch… / Add Tag… tại commit. */
   createBranch(repoRoot: string, name: string, oid: string): Promise<void>;
   createTag(repoRoot: string, name: string, oid: string): Promise<void>;
