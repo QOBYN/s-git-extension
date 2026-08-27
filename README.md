@@ -59,6 +59,8 @@ npm run verify     # typecheck + test + build
 npm run package    # tạo s-git.vsix
 ```
 
+Quy trình đóng gói và úp lên Marketplace: [`docs/release.md`](docs/release.md).
+
 Kiến trúc và spec nằm ở [`docs/design/`](docs/design/). Nguyên tắc chính:
 `extension/` là extension host (Node), `src/` là webview (React), `shared/`
 là phần dùng chung — hai môi trường có tsconfig riêng và không lẫn types.
