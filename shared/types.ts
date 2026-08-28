@@ -107,7 +107,17 @@ export interface FileChange {
   conflicted: boolean;
   /** Entry là submodule (field <sub> của porcelain v2 bắt đầu bằng 'S'). */
   submodule?: boolean;
+  /** Entry bị .gitignore — chỉ có khi getStatus với includeIgnored. */
+  ignored?: boolean;
 }
+
+/**
+ * Phạm vi file getStatus trả về (filter pane Changes — ui-analysis mục F):
+ *  - changes: chỉ file git phát hiện thay đổi (add/modify/delete/untracked/conflict).
+ *  - all:     TẤT CẢ file trong project (kèm file tracked không đổi — ls-files).
+ *  - ignored: như all, thêm entry .gitignore (thư mục ignore gộp 1 dòng).
+ */
+export type StatusScope = 'changes' | 'all' | 'ignored';
 
 export interface WorkingTreeStatus {
   branch: string | null;

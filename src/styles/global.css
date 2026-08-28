@@ -77,37 +77,13 @@ button {
   height: 100%;
 }
 
-.sg-repo-tabs {
-  display: flex;
-  gap: 2px;
-  padding: 4px 8px 0;
-  border-bottom: 1px solid var(--sg-border);
-  background: var(--sg-bg-panel);
+/* Vạch dọc ngăn dropdown repo với cụm nút git trên toolbar. */
+.sg-toolbar-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 3px 4px;
+  background: var(--sg-border);
   flex-shrink: 0;
-}
-
-.sg-repo-tab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border: none;
-  border-top: 2px solid transparent;
-  border-radius: 4px 4px 0 0;
-  background: transparent;
-  color: var(--sg-fg-dim);
-  cursor: pointer;
-}
-
-.sg-repo-tab:hover {
-  color: var(--sg-fg);
-}
-
-/* Tab active: nối liền với thân + viền accent trên — kiểu tab của SmartGit/VSCode. */
-.sg-repo-tab.active {
-  background: var(--sg-bg);
-  color: var(--sg-fg);
-  border-top-color: var(--sg-accent);
 }
 
 .sg-main {
@@ -264,8 +240,19 @@ button {
 
 .sg-filter-input.inline {
   display: inline-block;
-  width: 200px;
+  /* Đủ rộng để placeholder "Search commits (message · author · hash)" hiện
+     trọn; panel hẹp thì co lại theo flex thay vì tràn. */
+  flex: 0 1 300px;
+  width: 300px;
+  min-width: 140px;
   margin: 0;
+}
+
+/* Nhãn nhỏ trước dropdown lọc nhánh của header graph — "Branch:". */
+.sg-graph-label {
+  color: var(--sg-fg-dim);
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
 /* ---- dropdown lọc nhánh của màn History (tách với filter sidebar) ---- */
@@ -480,6 +467,13 @@ button {
 .kind-renamed,
 .kind-copied {
   color: var(--sg-renamed);
+}
+/* Entry .gitignore (filter "All, incl. ignored") — mờ để khỏi lẫn với change thật. */
+.kind-ignored {
+  color: var(--sg-fg-dim);
+}
+.sg-file-row.ignored .sg-file-name {
+  color: var(--sg-fg-dim);
 }
 
 .sg-file-name {
@@ -788,6 +782,12 @@ button {
   cursor: default;
 }
 
+/* Nút xác nhận hành động phá huỷ trong modal (Force Delete) — nền đỏ. */
+.sg-commit-btn.danger {
+  background: var(--sg-deleted);
+  color: var(--vscode-button-foreground, #fff);
+}
+
 /* ---- chỉ số thay đổi trên toolbar diff (B7: "+2~1") ---- */
 
 .sg-diff-kind {
@@ -838,6 +838,12 @@ button {
   padding: 4px 6px;
   border-bottom: 1px solid var(--sg-border);
   flex-shrink: 0;
+}
+
+/* 2 tab chia đều 50/50 cho cân sidebar. */
+.sg-side-tabs .sg-mode-btn {
+  flex: 1;
+  text-align: center;
 }
 
 .sg-sidebar-body {
@@ -961,6 +967,13 @@ button {
   background: var(--sg-row-hover);
 }
 
+/* Tab Working Tree: header repo kiêm "All changes" — đang xem all thì highlight
+   như 1 tree-row được chọn. */
+.sg-repo-header.selected {
+  background: var(--sg-row-selected);
+  color: var(--sg-row-selected-fg);
+}
+
 .sg-repo-name {
   font-weight: 700;
   cursor: pointer;
@@ -1059,14 +1072,67 @@ button {
 .sg-git-search {
   padding: 4px 8px 6px;
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 4px;
   border-bottom: 1px solid var(--sg-border);
 }
 
 .sg-git-search .sg-filter-input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   margin: 0;
+}
+
+/* Nút Expand All / Collapse All cạnh ô filter — icon vuông kiểu toolbar VSCode. */
+.sg-tree-toolbar-btn {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  background: transparent;
+  color: var(--sg-fg-dim);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.sg-tree-toolbar-btn:hover {
+  background: var(--sg-row-hover);
+  color: var(--sg-fg);
+}
+
+/* Tooltip tự vẽ (data-tip) — hiện nhanh hơn title mặc định, style theo hover
+   widget của VSCode; neo phải để không tràn mép sidebar. */
+.sg-tree-toolbar-btn {
+  position: relative;
+}
+
+.sg-tree-toolbar-btn::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  padding: 3px 8px;
+  white-space: nowrap;
+  font-size: 11px;
+  border-radius: 4px;
+  background: var(--vscode-editorHoverWidget-background, var(--sg-bg));
+  color: var(--vscode-editorHoverWidget-foreground, var(--sg-fg));
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--sg-border));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease 0.25s;
+}
+
+.sg-tree-toolbar-btn:hover::after {
+  opacity: 1;
 }
 
 /* ---- diff theo loại file: ảnh / CSV / binary ---- */
@@ -1235,49 +1301,44 @@ button {
   overflow: hidden;
 }
 
-.sg-submodule-rails-columns {
-  display: flex;
-  align-items: stretch;
+/* Tiêu đề khung graph: đếm 2 phía trên cùng 1 dòng (ngoài vùng cuộn). */
+.sg-submodule-history-title {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--sg-border);
+  background: var(--sg-bg);
+}
+
+.sg-submodule-title-part.added {
+  color: var(--sg-added);
+}
+
+.sg-submodule-title-part.removed {
+  color: var(--sg-deleted);
+}
+
+.sg-submodule-title-sep {
+  margin: 0 6px;
+  color: var(--sg-fg-dim);
+  font-weight: 400;
+}
+
+/* Thân graph: danh sách commit trộn 2 phía, kẻ dọc màu mỗi lane chạy sau các
+   nút commit. 1 lane → 1 đường màu theo chiều; 2 lane → đỏ trái, xanh phải. */
+.sg-submodule-history-scroll {
   flex: 0 1 auto;
   min-height: 0;
   overflow: auto;
 }
 
-.sg-submodule-history {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-.sg-submodule-history + .sg-submodule-history {
-  border-left: 1px solid var(--sg-border);
-}
-
-.sg-submodule-history-title {
-  padding: 4px 10px;
-  font-weight: 600;
-  border-bottom: 1px solid var(--sg-border);
-  /* Cuộn danh sách vẫn thấy tiêu đề cột (Commits added/removed). */
-  position: sticky;
-  top: 0;
-  background: var(--sg-bg);
-  z-index: 1;
-}
-
-.sg-submodule-history.added .sg-submodule-history-title {
-  color: var(--sg-added);
-}
-
-.sg-submodule-history.removed .sg-submodule-history-title {
-  color: var(--sg-deleted);
-}
-
-/* Thân ray: kẻ dọc màu chạy sau các nút commit — "đường" của mỗi phía. */
 .sg-submodule-history-body {
   position: relative;
   padding: 4px 0;
 }
 
-.sg-submodule-history-body::before {
+.sg-submodule-history-body::before,
+.sg-submodule-history-body.lanes-2::after {
   content: '';
   position: absolute;
   left: 17px;
@@ -1287,12 +1348,26 @@ button {
   opacity: 0.45;
 }
 
-.sg-submodule-history.added .sg-submodule-history-body::before {
+.sg-submodule-history-body.added::before,
+.sg-submodule-history-body.lanes-2::after {
   background: var(--sg-added);
 }
 
-.sg-submodule-history.removed .sg-submodule-history-body::before {
+.sg-submodule-history-body.removed::before,
+.sg-submodule-history-body.lanes-2::before {
   background: var(--sg-deleted);
+}
+
+/* Lane phải (NEW, xanh): ô lane 15px + gap 6px sau lane trái. */
+.sg-submodule-history-body.lanes-2::after {
+  left: 38px;
+}
+
+/* Ô lane cố định đầu dòng — giữ mọi dòng thẳng cột, ô trống để lộ đường kẻ. */
+.sg-submodule-lane {
+  flex: 0 0 15px;
+  display: inline-flex;
+  justify-content: center;
 }
 
 .sg-submodule-commit {
@@ -1366,9 +1441,9 @@ button.sg-submodule-more:disabled {
   background: var(--sg-fg-dim);
 }
 
-/* Vùng hội tụ giữa cột commit và dòng neo: vẽ (các) đường ray chạy tiếp xuống
-   gốc. Phân kỳ (.both): nhánh trái (OLD, đỏ) đi thẳng, nhánh phải (NEW, xanh)
-   vòng từ ray cột phải (50% + 17px) về gốc — thành hình cây 1 gốc 2 nhánh. */
+/* Vùng hội tụ giữa danh sách commit và dòng neo: vẽ (các) lane chạy tiếp xuống
+   gốc. Phân kỳ (.both): lane trái (OLD, đỏ) đi thẳng, lane phải (NEW, xanh)
+   vòng từ lane phải (38px) về gốc — thành hình cây 1 gốc 2 nhánh. */
 .sg-submodule-converge {
   position: relative;
   height: 14px;
@@ -1395,12 +1470,12 @@ button.sg-submodule-more:disabled {
   background: var(--sg-deleted);
 }
 
-/* Nhánh phải (NEW) vòng về gốc trái khi phân kỳ. */
+/* Lane phải (NEW) vòng về gốc trái khi phân kỳ. */
 .sg-submodule-converge.both::after {
   content: '';
   position: absolute;
   left: 18px;
-  right: calc(50% - 18px);
+  width: 21px;
   top: 0;
   bottom: 4px;
   border-right: 2px solid var(--sg-added);
@@ -1535,6 +1610,50 @@ button.sg-submodule-more:disabled {
   display: inline-flex;
   align-items: center;
   padding: 1px 4px;
+}
+
+/* Icon đang bật (vd phễu filter): underline không hợp với icon — dùng nền + màu. */
+.sg-tool.icon.active,
+.sg-tool.mono.active {
+  background: var(--sg-row-hover);
+  color: var(--sg-accent, var(--sg-fg));
+  text-decoration: none;
+}
+
+/* Nút ký hiệu kiểu chữ code (vd [*.] bật wildcard) — font mono cho dễ nhận. */
+.sg-tool.mono {
+  font-family: var(--sg-mono);
+  font-size: 11px;
+  padding: 2px 5px;
+}
+
+/* Vùng list nhận focus để điều hướng ↑/↓ — selection màu đã nói thay, khỏi vẽ ring. */
+.sg-wt-left:focus {
+  outline: none;
+}
+
+/* Panel diff giữ chỗ khi CHƯA chọn file (layout ổn định, không nhảy). */
+.sg-diff-placeholder {
+  align-items: center;
+  justify-content: center;
+  color: var(--sg-fg-dim);
+  font-size: 12px;
+}
+
+/* Thanh search lọc file của Working Tree (nút phễu) — nằm trên pane Changes. */
+.sg-file-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--sg-border);
+  flex-shrink: 0;
+}
+
+.sg-file-search .sg-filter-input.inline {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
 }
 
 .sg-tool.icon svg {
@@ -1769,20 +1888,11 @@ button.sg-submodule-more:disabled {
   background: var(--sg-bg-panel);
 }
 
-.sg-feedback-btn {
+/* Footer sidebar dùng chung FeedbackButton (sg-toolbar-btn) với toolbar panel
+   — chỉ nới full-width + canh giữa cho cân đáy sidebar. */
+.sg-sidebar-footer .sg-toolbar-btn {
   width: 100%;
-  padding: 4px 8px;
-  border: 1px solid var(--sg-border);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--sg-fg);
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.sg-feedback-btn:hover {
-  background: var(--sg-row-hover);
-  border-color: var(--vscode-focusBorder, var(--sg-border));
+  justify-content: center;
 }
 
 .sg-modal.feedback {

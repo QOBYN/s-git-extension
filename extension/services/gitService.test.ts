@@ -123,6 +123,37 @@ describe('GitService.getStatus', () => {
       '--untracked-files=all',
     ]);
   });
+
+  it("scope 'ignored' thêm --ignored=matching (gộp thư mục ignore thành 1 dòng)", async () => {
+    const runner = new FakeGitRunner(() => '');
+    await new GitService(runner).getStatus('/repo', 'ignored');
+
+    expect(runner.callsOf('status')[0].args).toContain('--ignored=matching');
+  });
+
+  it("scope 'all' ghép thêm file tracked KHÔNG đổi từ ls-files (không trùng file đã có)", async () => {
+    const runner = new FakeGitRunner((args) => {
+      if (args[0] === 'status') {
+        return '1 .M N... 100644 100644 100644 h1 h2 changed.ts\0';
+      }
+      if (args[0] === 'ls-files') {
+        return 'changed.ts\0plain.ts\0';
+      }
+      return '';
+    });
+
+    const result = await new GitService(runner).getStatus('/repo', 'all');
+
+    expect(result.files.map((f) => f.path)).toEqual(['changed.ts', 'plain.ts']);
+    expect(result.files[1]).toMatchObject({ staged: null, unstaged: null, untracked: false });
+  });
+
+  it("scope 'changes' (mặc định) KHÔNG gọi ls-files", async () => {
+    const runner = new FakeGitRunner(() => '');
+    await new GitService(runner).getStatus('/repo');
+
+    expect(runner.callsOf('ls-files')).toEqual([]);
+  });
 });
 
 describe('GitService — thao tác ghi', () => {
@@ -352,6 +383,13 @@ describe('GitService — thao tác nhánh/tag từ sidebar', () => {
     const call = runner.callsOf('branch')[0];
     expect(call.args).toEqual(['branch', '-d', '--', 'feat/x']);
     expect(call.opts.exclusive).toBe(true);
+  });
+
+  it('deleteBranch force=true chuyển sang -D (sau khi user xác nhận popup)', async () => {
+    const runner = new FakeGitRunner(() => '');
+    await new GitService(runner).deleteBranch('/repo', 'feat/x', true);
+
+    expect(runner.callsOf('branch')[0].args).toEqual(['branch', '-D', '--', 'feat/x']);
   });
 
   it('renameBranch dùng -m với đủ tên cũ/mới', async () => {
@@ -618,6 +656,41 @@ describe('GitService.getSubmoduleDiff', () => {
     expect(info!.aheadTruncated).toBe(false);
     // Lệnh đọc repo con phải chạy TRONG thư mục submodule.
     expect(runner.callsOf('log').every((c) => c.cwd === '/repo/libs/child')).toBe(true);
+  });
+
+  it('gitlink CONFLICT (index chỉ có stage 1/2/3): so OURS ↔ THEIRS + merge-base', async () => {
+    const BASE = 'c'.repeat(40);
+    const runner = new FakeGitRunner((args) => {
+      switch (args[0]) {
+        case 'ls-files':
+          return (
+            `160000 ${BASE} 1\tlibs/child\0` +
+            `160000 ${OLD} 2\tlibs/child\0` +
+            `160000 ${NEW} 3\tlibs/child\0`
+          );
+        case 'merge-base':
+          return `${BASE}\n`;
+        case 'log':
+          if (args.at(-1) === `${OLD}..${NEW}`) {
+            return rec('t1', 'theirs moved');
+          }
+          if (args.at(-1) === `${NEW}..${OLD}`) {
+            return rec('o1', 'ours moved');
+          }
+          return rec('tip', 'tip');
+        default:
+          return '';
+      }
+    });
+
+    const info = await new GitService(runner).getSubmoduleDiff('/repo', {
+      kind: 'workingTree',
+      path: 'libs/child',
+    });
+
+    expect(info).toMatchObject({ oldOid: OLD, newOid: NEW, baseOid: BASE });
+    expect(info!.ahead.map((c) => c.oid)).toEqual(['t1']);
+    expect(info!.behind.map((c) => c.oid)).toEqual(['o1']);
   });
 
   it('commit: đọc gitlink từ tree của oid^ và oid qua ls-tree', async () => {

@@ -25,6 +25,7 @@ import type {
   RemoteInfo,
   RepoDelta,
   RepoInfo,
+  StatusScope,
   SubmoduleLogPage,
   WorkingTreeStatus,
 } from './types';
@@ -34,7 +35,8 @@ export interface HostFunctions {
   // ---- đọc (P0) ----
   listRepos(): Promise<RepoInfo[]>;
   getLog(repoRoot: string, opts?: LogOptions): Promise<LogPage>;
-  getStatus(repoRoot: string): Promise<WorkingTreeStatus>;
+  /** `scope` = phạm vi file trả về (mặc định 'changes' — xem StatusScope). */
+  getStatus(repoRoot: string, scope?: StatusScope): Promise<WorkingTreeStatus>;
   getDiff(repoRoot: string, target: DiffTarget): Promise<DiffPayload>;
   /**
    * Trang tiếp theo của history repo con — nút "show more" trong view diff
@@ -109,8 +111,11 @@ export interface HostFunctions {
   createTag(repoRoot: string, name: string, oid: string): Promise<void>;
 
   // ---- context menu nhánh/tag ở sidebar ----
-  /** `git branch -d` — git tự chặn nhánh chưa merge / nhánh hiện tại (an toàn có sẵn). */
-  deleteBranch(repoRoot: string, name: string): Promise<void>;
+  /**
+   * `git branch -d` — git tự chặn nhánh chưa merge / nhánh hiện tại (an toàn có
+   * sẵn). force = true → `-D`, chỉ gọi sau khi user xác nhận popup Force Delete.
+   */
+  deleteBranch(repoRoot: string, name: string, force?: boolean): Promise<void>;
   renameBranch(repoRoot: string, oldName: string, newName: string): Promise<void>;
   deleteTag(repoRoot: string, name: string): Promise<void>;
 
@@ -121,6 +126,19 @@ export interface HostFunctions {
   revealInOS(repoRoot: string, relPath: string): Promise<void>;
   /** Mở tab File Log cho 1 file (menu "File Log" — đường vào màn hình C). */
   openFileLog(repoRoot: string, relPath: string): Promise<void>;
+
+  // ---- context menu folder (sidebar tab Working Tree) — action kiểu Explorer của VSCode ----
+  /** Mở Integrated Terminal tại thư mục (relPath '' = root repo). */
+  openInTerminal(repoRoot: string, relPath: string): Promise<void>;
+  /** Mở Search view với "files to include" = thư mục này (Find in Folder…). */
+  findInFolder(repoRoot: string, relPath: string): Promise<void>;
+  /** Đổi tên file/thư mục trên đĩa — giữ nguyên thư mục cha (vscode.workspace.fs.rename). */
+  renamePath(repoRoot: string, relPath: string, newName: string): Promise<void>;
+  /**
+   * Xoá file/thư mục: host hỏi xác nhận (dialog modal của VSCode) rồi chuyển vào
+   * Trash. Trả false khi user huỷ — webview bỏ qua, không báo "Deleted".
+   */
+  deletePath(repoRoot: string, relPath: string): Promise<boolean>;
 
   // ---- quản lý remote (context menu sidebar tab Git) ----
   /** Remote đã khai báo (tên + URL fetch) — hiện cả remote chưa fetch lần nào. */

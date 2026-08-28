@@ -8,6 +8,21 @@
   <body>
     <!-- Text tĩnh: còn thấy nghĩa là bundle JS chưa chạy được (chẩn đoán lỗi tải). -->
     <div id="root"><p style="padding: 12px; opacity: 0.6">Loading S-Git…</p></div>
+    <script>
+      // Dev-mode fallback: host không inject được __SMARTGIT_INIT__ vào head
+      // (plugin bỏ qua injectCode khi chạy dev server) nên truyền qua query string.
+      // Prod: script inject ở <head> chạy trước → không ghi đè.
+      if (!window.__SMARTGIT_INIT__) {
+        const raw = new URLSearchParams(location.search).get('__SMARTGIT_INIT__');
+        if (raw) {
+          try {
+            window.__SMARTGIT_INIT__ = JSON.parse(raw);
+          } catch (e) {
+            console.warn('S-Git: __SMARTGIT_INIT__ trong URL không parse được', e);
+          }
+        }
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

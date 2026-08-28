@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { EXTENSION_ID_PREFIX } from '../shared/constants';
 import { readExtensionConfig } from './adapters/config';
+import { debounce } from './core/async';
 import { FileStorage } from './adapters/fileStorage';
 import { GitWatcher } from './adapters/gitWatcher';
 import { NodeFileSystem } from './adapters/nodeFs';
@@ -14,6 +15,7 @@ import { FEEDBACK_TARGET } from './feedbackTarget';
 import { createHostFunctions } from './rpc/hostFunctions';
 import { RpcHub } from './rpc/rpcHub';
 import { CacheIndex } from './services/cacheIndex';
+import { countChangedFiles } from './services/changeBadge';
 import { FeedbackService } from './services/feedbackService';
 import { GitService } from './services/gitService';
 import { SpawnGitRunner } from './services/gitRunner';
@@ -67,9 +69,60 @@ export function activate(context: vscode.ExtensionContext): void {
         ),
       openFileLog: (repoRoot, relPath) =>
         FileLogPanel.show(context, hostFunctions, hub, repoRoot, relPath),
+      openInTerminal: (repoRoot, relPath) =>
+        void vscode.commands.executeCommand(
+          'openInIntegratedTerminal',
+          vscode.Uri.file(path.join(repoRoot, relPath)),
+        ),
+      findInFolder: (repoRoot, relPath) => {
+        // Cùng đích với "Find in Folder…" của Explorer: mở Search view, giới hạn
+        // files to include theo đường dẫn tương đối workspace; thư mục ngoài
+        // workspace (asRelativePath trả absolute) thì tìm toàn workspace.
+        const rel = vscode.workspace.asRelativePath(path.join(repoRoot, relPath), false);
+        void vscode.commands.executeCommand('workbench.action.findInFiles', {
+          filesToInclude: path.isAbsolute(rel) ? '' : `./${rel}`,
+        });
+      },
+      renamePath: async (repoRoot, relPath, newName) => {
+        const abs = path.join(repoRoot, relPath);
+        await vscode.workspace.fs.rename(
+          vscode.Uri.file(abs),
+          vscode.Uri.file(path.join(path.dirname(abs), newName)),
+        );
+      },
+      deletePath: async (repoRoot, relPath) => {
+        const abs = path.join(repoRoot, relPath);
+        const choice = await vscode.window.showWarningMessage(
+          `Delete '${path.basename(abs)}'?`,
+          { modal: true, detail: 'Sẽ chuyển vào Thùng rác — khôi phục được từ đó.' },
+          'Move to Trash',
+        );
+        if (choice !== 'Move to Trash') {
+          return false;
+        }
+        await vscode.workspace.fs.delete(vscode.Uri.file(abs), { recursive: true, useTrash: true });
+        return true;
+      },
     },
     feedback,
   });
+
+  const sidebar = new SidebarViewProvider(context, hostFunctions, hub);
+
+  // ---- badge số file thay đổi trên icon Activity Bar ----
+  // Watcher .git/ chỉ bắt stage/commit/checkout; sửa file working tree không chạm
+  // .git nên phải nghe thêm save/tạo/xoá/đổi tên file trong workspace.
+  const badge = debounce(() => {
+    void countChangedFiles(repoManager, git).then((n) => sidebar.setBadge(n));
+  }, config.gitWatchDebounceMs);
+  context.subscriptions.push(
+    badge,
+    vscode.workspace.onDidSaveTextDocument(() => badge.call()),
+    vscode.workspace.onDidCreateFiles(() => badge.call()),
+    vscode.workspace.onDidDeleteFiles(() => badge.call()),
+    vscode.workspace.onDidRenameFiles(() => badge.call()),
+  );
+  badge.call();
 
   // ---- watcher .git/ → broadcast repoChanged (setup nền, không chặn activate) ----
   void (async () => {
@@ -78,19 +131,17 @@ export function activate(context: vscode.ExtensionContext): void {
     const watched = await Promise.all(
       repos.map(async (repo) => ({ root: repo.root, gitDir: await git.getGitDir(repo.root) })),
     );
-    const watcher = new GitWatcher(watched, config.gitWatchDebounceMs, (repoRoot) =>
-      hub.broadcastRepoChanged(repoRoot, { changed: ['log', 'status', 'refs'] }),
-    );
+    const watcher = new GitWatcher(watched, config.gitWatchDebounceMs, (repoRoot) => {
+      hub.broadcastRepoChanged(repoRoot, { changed: ['log', 'status', 'refs'] });
+      badge.call();
+    });
     context.subscriptions.push(watcher);
   })();
 
   // ---- views + commands ----
   context.subscriptions.push(
     hub,
-    vscode.window.registerWebviewViewProvider(
-      SidebarViewProvider.viewType,
-      new SidebarViewProvider(context, hostFunctions, hub),
-    ),
+    vscode.window.registerWebviewViewProvider(SidebarViewProvider.viewType, sidebar),
     vscode.commands.registerCommand(`${EXTENSION_ID_PREFIX}.openPanel`, () =>
       MainPanel.createOrShow(context, hostFunctions, hub),
     ),

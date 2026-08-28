@@ -12,7 +12,9 @@ import { childFolders } from '../../shared/folders';
 import { CheckoutDialog } from '../components/CheckoutDialog';
 import { ContextMenu, type MenuState } from '../components/ContextMenu';
 import { DirtyGuardDialog } from '../components/DirtyGuardDialog';
+import { FeedbackButton } from '../components/FeedbackButton';
 import { FeedbackDialog } from '../components/FeedbackDialog';
+import { ForceDeleteDialog } from '../components/ForceDeleteDialog';
 import { MergeDialog } from '../components/MergeDialog';
 import { PromptModal } from '../components/PromptModal';
 import { RemoteDialog } from '../components/RemoteDialog';
@@ -41,11 +43,19 @@ interface RemotePrompt {
 
 type SidebarTab = 'workingTree' | 'git';
 
+// Nhãn menu theo OS như VSCode ("Reveal in Finder" chỉ đúng trên macOS).
+const IS_MAC = navigator.userAgent.includes('Mac');
+
 export function SidebarScreen() {
   const store = useRepoStore();
   const [tab, setTab] = useState<SidebarTab>('workingTree');
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [renamePrompt, setRenamePrompt] = useState<RenamePrompt | null>(null);
+  /** Modal đổi tên thư mục (context menu tab Working Tree). */
+  const [folderRenamePrompt, setFolderRenamePrompt] = useState<{
+    repoRoot: string;
+    folder: string;
+  } | null>(null);
   const [mergePrompt, setMergePrompt] = useState<MergePrompt | null>(null);
   const [remotePrompt, setRemotePrompt] = useState<RemotePrompt | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -62,6 +72,62 @@ export function SidebarScreen() {
   const openCheckoutPrompt = (repo: RepoInfo, ref: string) => {
     void store.loadAllStatuses();
     setCheckoutPrompt({ repo, ref });
+  };
+
+  /**
+   * Context menu folder tab Working Tree — các action folder quen thuộc của
+   * Explorer VSCode (reveal/terminal/find/copy path/rename/delete). folder null =
+   * header repo: rename/delete/copy-relative bị mờ (không thao tác lên root từ đây).
+   */
+  const openFolderMenu = (event: React.MouseEvent, repo: RepoInfo, folder: string | null) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const rel = folder ?? '';
+    setMenu({
+      x: event.clientX,
+      y: event.clientY,
+      entries: [
+        {
+          label: IS_MAC ? 'Reveal in Finder' : 'Reveal in File Explorer',
+          onClick: () => void host.revealInOS(repo.root, rel),
+        },
+        {
+          label: 'Open in Integrated Terminal',
+          onClick: () => void host.openInTerminal(repo.root, rel),
+        },
+        'sep',
+        { label: 'Find in Folder…', onClick: () => void host.findInFolder(repo.root, rel) },
+        'sep',
+        {
+          label: 'Copy Path',
+          onClick: () => copyText(folder === null ? repo.root : `${repo.root}/${folder}`),
+        },
+        {
+          label: 'Copy Relative Path',
+          disabled: folder === null,
+          onClick: () => copyText(rel),
+        },
+        'sep',
+        {
+          label: 'Rename…',
+          disabled: folder === null,
+          onClick: () => {
+            if (folder !== null) {
+              setFolderRenamePrompt({ repoRoot: repo.root, folder });
+            }
+          },
+        },
+        {
+          label: 'Delete',
+          disabled: folder === null,
+          onClick: () => {
+            if (folder !== null) {
+              void store.deleteFolder(repo.root, folder);
+            }
+          },
+        },
+      ],
+    });
   };
 
   /** Context menu nhánh/tag — cùng pattern menu commit: disable ≠ ẩn, hint bên phải. */
@@ -105,13 +171,13 @@ export function SidebarScreen() {
           label: ref.kind === 'tag' ? 'Delete Tag' : 'Delete Branch',
           disabled: ref.kind === 'remote' || (ref.kind === 'local' && ref.isHead),
           onClick: () =>
-            void store.sidebarGitOp(
-              () =>
-                ref.kind === 'tag'
-                  ? host.deleteTag(repo.root, ref.name)
-                  : host.deleteBranch(repo.root, ref.name),
-              `Deleted '${ref.name}'.`,
-            ),
+            void (ref.kind === 'tag'
+              ? store.sidebarGitOp(
+                  () => host.deleteTag(repo.root, ref.name),
+                  `Deleted '${ref.name}'.`,
+                )
+              : // Nhánh chưa merge: -d bị git chê → store mở popup Force Delete.
+                store.deleteBranchSafe(repo.root, ref.name)),
         },
         'sep',
         { label: 'Copy Name', onClick: () => copyText(ref.name) },
@@ -173,7 +239,9 @@ export function SidebarScreen() {
           <p className="sg-empty small">No git repository in workspace</p>
         )}
         {tab === 'workingTree' &&
-          store.repos.map((repo) => <RepoWorkingTree key={repo.root} repo={repo} />)}
+          store.repos.map((repo) => (
+            <RepoWorkingTree key={repo.root} repo={repo} onFolderMenu={openFolderMenu} />
+          ))}
         {tab === 'git' && (
           <>
             <GitSearchBar />
@@ -194,13 +262,7 @@ export function SidebarScreen() {
 
       {/* Luôn nằm đáy sidebar — lối góp ý ở đâu cũng thấy, không phải tìm. */}
       <div className="sg-sidebar-footer">
-        <button
-          className="sg-feedback-btn"
-          title="Góp ý / báo lỗi — gửi thẳng vào group Telegram của team"
-          onClick={() => setFeedbackOpen(true)}
-        >
-          💬 Gửi góp ý
-        </button>
+        <FeedbackButton onClick={() => setFeedbackOpen(true)} />
       </div>
 
       {store.error !== null && <div className="sg-error">{store.error}</div>}
@@ -241,6 +303,14 @@ export function SidebarScreen() {
           onClose={() => store.dismissDirtyGuard()}
         />
       )}
+      {store.forceDeletePrompt !== null && (
+        <ForceDeleteDialog
+          branch={store.forceDeletePrompt.branch}
+          message={store.forceDeletePrompt.message}
+          onForceDelete={() => void store.confirmForceDeleteBranch()}
+          onClose={() => store.dismissForceDeleteBranch()}
+        />
+      )}
       {feedbackOpen && (
         <FeedbackDialog
           context={{
@@ -265,6 +335,22 @@ export function SidebarScreen() {
             )
           }
           onClose={() => setRenamePrompt(null)}
+        />
+      )}
+      {folderRenamePrompt && (
+        <PromptModal
+          title={`Rename folder '${folderRenamePrompt.folder.slice(
+            folderRenamePrompt.folder.lastIndexOf('/') + 1,
+          )}'`}
+          placeholder="new folder name"
+          actionLabel="Rename"
+          initialValue={folderRenamePrompt.folder.slice(
+            folderRenamePrompt.folder.lastIndexOf('/') + 1,
+          )}
+          onSubmit={(newName) =>
+            void store.renameFolder(folderRenamePrompt.repoRoot, folderRenamePrompt.folder, newName)
+          }
+          onClose={() => setFolderRenamePrompt(null)}
         />
       )}
       {remotePrompt && (
@@ -312,12 +398,20 @@ export function SidebarScreen() {
 
 // ================= tab 1: Working Tree (Explorer-style) =================
 
-function RepoWorkingTree({ repo }: { repo: RepoInfo }) {
+function RepoWorkingTree({
+  repo,
+  onFolderMenu,
+}: {
+  repo: RepoInfo;
+  /** Chuột phải folder/header → menu action kiểu Explorer (folder null = root repo). */
+  onFolderMenu(event: React.MouseEvent, repo: RepoInfo, folder: string | null): void;
+}) {
   const folders = useRepoStore((s) => s.foldersByRepo[repo.root]) ?? [];
   const changes = useRepoStore((s) => s.statusByRepo[repo.root]) ?? [];
   const [collapsed, setCollapsed] = useState(false);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  const [selected, setSelected] = useState<string | null>(null); // folder đang chọn
+  // Folder đang chọn: null = all changes (header), undefined = chưa chọn gì.
+  const [selected, setSelected] = useState<string | null | undefined>(undefined);
 
   const toggle = (folder: string) =>
     setExpanded((prev) => {
@@ -349,6 +443,7 @@ function RepoWorkingTree({ repo }: { repo: RepoInfo }) {
             className={`sg-tree-row${selected === folder ? ' selected' : ''}`}
             style={{ paddingLeft: 10 + depth * 12 }}
             onClick={() => openScope(folder)}
+            onContextMenu={(e) => onFolderMenu(e, repo, folder)}
             title={`Show changes in ${folder}/`}
           >
             <span
@@ -369,37 +464,27 @@ function RepoWorkingTree({ repo }: { repo: RepoInfo }) {
 
   return (
     <div className="sg-sidebar-repo">
-      <div className="sg-repo-header" title={repo.root}>
+      {/* Header kiêm luôn "All changes" — click tên repo là xem mọi change,
+          không cần dòng All changes riêng gây thắc mắc. */}
+      <div
+        className={`sg-repo-header${selected === null ? ' selected' : ''}`}
+        title={`${repo.root} — click: show all changes`}
+        onClick={() => openScope(null)}
+        onContextMenu={(e) => onFolderMenu(e, repo, null)}
+      >
         <span
           className={`sg-tree-chevron${collapsed ? '' : ' open'}`}
-          onClick={() => setCollapsed((v) => !v)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setCollapsed((v) => !v);
+          }}
         />
-        <span
-          className="sg-repo-name"
-          onClick={() => openScope(null)}
-          title="Show all changes of this repo"
-        >
-          {repo.name}
-        </span>
+        <span className="sg-repo-name">{repo.name}</span>
         {repo.branch !== null && <span className="sg-ref-badge">{repo.branch}</span>}
         {repo.activity !== 'none' && <span className="sg-ref-badge tag">{repo.activity}</span>}
         {changes.length > 0 && <span className="sg-count-badge">{changes.length}</span>}
       </div>
-      {!collapsed && (
-        <>
-          <div
-            className={`sg-tree-row${selected === null ? ' selected' : ''}`}
-            style={{ paddingLeft: 10 }}
-            onClick={() => openScope(null)}
-          >
-            <span className="sg-tree-chevron hidden" />
-            <span className="sg-tree-icon">🗂</span>
-            <span className="sg-tree-label all">All changes</span>
-            {changes.length > 0 && <span className="sg-count-badge">{changes.length}</span>}
-          </div>
-          {renderLevel(null, 1)}
-        </>
-      )}
+      {!collapsed && renderLevel(null, 1)}
     </div>
   );
 }
@@ -418,8 +503,78 @@ function GitSearchBar() {
         value={store.sidebarRefFilter}
         onChange={(e) => store.setSidebarRefFilter(e.target.value)}
       />
+      {/* data-tip = tooltip CSS hiện ngay khi hover (title mặc định chậm ~1s). */}
+      <button
+        className="sg-tree-toolbar-btn"
+        data-tip="Expand all — mở hết cây"
+        aria-label="Expand all"
+        onClick={() => store.setSidebarTreeOpen(true)}
+      >
+        <ExpandAllIcon />
+      </button>
+      <button
+        className="sg-tree-toolbar-btn"
+        data-tip="Collapse all — đóng hết cây"
+        aria-label="Collapse all"
+        onClick={() => store.setSidebarTreeOpen(false)}
+      >
+        <CollapseAllIcon />
+      </button>
     </div>
   );
+}
+
+// Icon vẽ inline theo currentColor (cùng lý do FileTreeList: CSP chặn tài
+// nguyên ngoài, codicon font không expose ra app) — double chevron kiểu
+// fold/unfold của VSCode.
+
+/** 2 chevron xuống = mở toàn bộ cây. */
+function ExpandAllIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <path d="M3.5 3.5 8 8l4.5-4.5" />
+      <path d="M3.5 8.5 8 13l4.5-4.5" />
+    </svg>
+  );
+}
+
+/** 2 chevron lên = đóng toàn bộ cây. */
+function CollapseAllIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <path d="M3.5 7.5 8 3l4.5 4.5" />
+      <path d="M3.5 12.5 8 8l4.5 4.5" />
+    </svg>
+  );
+}
+
+/**
+ * Nghe lệnh Expand/Collapse All từ GitSearchBar: áp trạng thái của lệnh mỗi khi
+ * seq đổi (seq 0 = chưa bấm). Chạy cả lúc mount để node vừa hiện ra do cha mở
+ * cũng nghe theo — nhờ vậy Expand All lan xuống hết các tầng submodule.
+ */
+function useSidebarTreeCmd(apply: (open: boolean) => void) {
+  const cmd = useRepoStore((s) => s.sidebarTreeCmd);
+  useEffect(() => {
+    if (cmd.seq > 0) apply(cmd.open);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ chạy theo lệnh, không theo identity của apply
+  }, [cmd]);
 }
 
 /** Menu context dùng chung cho cả repo cha lẫn submodule — nhận repo qua tham số. */
@@ -455,6 +610,7 @@ function RepoGit({
   allRepos: RepoInfo[];
 } & RepoGitMenus) {
   const [collapsed, setCollapsed] = useState(false);
+  useSidebarTreeCmd((open) => setCollapsed(!open));
 
   return (
     <div className="sg-sidebar-repo">
@@ -606,6 +762,7 @@ function SubmoduleGit({
   depth: number;
 } & RepoGitMenus) {
   const [open, setOpen] = useState(false);
+  useSidebarTreeCmd(setOpen);
 
   return (
     <div>
@@ -650,6 +807,7 @@ function GitSection({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen ?? false);
+  useSidebarTreeCmd(setOpen);
   return (
     <div>
       <div

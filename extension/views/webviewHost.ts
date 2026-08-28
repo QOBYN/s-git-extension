@@ -43,8 +43,14 @@ export function attachWebview(
   hub: RpcHub,
   initial: WebviewInitial,
 ): HostRpc {
+  // Dev: getWebviewHtml của plugin BỎ QUA injectCode (chỉ render iframe trỏ dev
+  // server) → __SMARTGIT_INIT__ không được inject và mọi webview rơi về màn 'main'.
+  // Truyền init qua query string thay thế — index.html đọc ra trước khi app load.
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL
+    ? `${process.env.VITE_DEV_SERVER_URL}?__SMARTGIT_INIT__=${encodeURIComponent(JSON.stringify(initial))}`
+    : undefined;
   webview.html = getWebviewHtml({
-    serverUrl: process.env.VITE_DEV_SERVER_URL,
+    serverUrl: devServerUrl,
     webview,
     context,
     injectCode: `<script>window.__SMARTGIT_INIT__=${JSON.stringify(initial)};</script>`,

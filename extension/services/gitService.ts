@@ -23,6 +23,7 @@ import type {
   RefInfo,
   RemoteInfo,
   ResetMode,
+  StatusScope,
   SubmoduleDiffInfo,
   SubmoduleLogPage,
 } from '../../shared/types';
@@ -127,7 +128,7 @@ export class GitService {
     };
   }
 
-  async getStatus(root: string): Promise<StatusResult> {
+  async getStatus(root: string, scope: StatusScope = 'changes'): Promise<StatusResult> {
     const out = await this.runner.run(root, [
       'status',
       '--porcelain=v2',
@@ -136,8 +137,23 @@ export class GitService {
       // Liệt kê từng file trong thư mục untracked thay vì gộp 1 dòng thư mục —
       // vùng Changed files cần path đầy đủ từng file (ui-analysis mục F).
       '--untracked-files=all',
+      // `matching` gộp thư mục ignore nguyên cụm thành 1 dòng (node_modules/) —
+      // `traditional` + -uall sẽ liệt kê từng file bên trong, nổ hàng nghìn dòng.
+      ...(scope === 'ignored' ? ['--ignored=matching'] : []),
     ]);
-    return parseStatusV2(out);
+    const result = parseStatusV2(out);
+    if (scope !== 'changes') {
+      // "All files": ghép thêm file tracked KHÔNG thay đổi (status không liệt kê)
+      // — mọi field null/false = unchanged. ls-files đã sort sẵn theo tên.
+      const known = new Set(result.files.map((f) => f.path));
+      const tracked = await this.runner.run(root, ['ls-files', '-z']);
+      for (const path of tracked.split('\0')) {
+        if (path !== '' && !known.has(path)) {
+          result.files.push({ path, staged: null, unstaged: null, untracked: false, conflicted: false });
+        }
+      }
+    }
+    return result;
   }
 
   async listRefs(root: string): Promise<RefInfo[]> {
@@ -207,8 +223,18 @@ export class GitService {
     let newOid: string | null;
     let dirty = false;
     switch (kind) {
-      case 'workingTree':
-        oldOid = await this.gitlinkInIndex(root, path);
+      case 'workingTree': {
+        const stages = await this.gitlinkStages(root, path);
+        if (!stages.has(0) && stages.size > 0) {
+          // Gitlink đang CONFLICT (merge/rebase): index chỉ có stage 1/2/3.
+          // So OURS (:2) ↔ THEIRS (:3) — đúng câu hỏi khi resolve; view 2 nhánh
+          // + merge-base phía dưới tự khớp vì 2 con trỏ phân kỳ.
+          oldOid = stages.get(2) ?? null;
+          newOid = stages.get(3) ?? null;
+          dirty = await this.submoduleContentDirty(root, path);
+          break;
+        }
+        oldOid = stages.get(0) ?? null;
         newOid = await this.submoduleWorkingOid(root, path);
         dirty = await this.submoduleContentDirty(root, path);
         if (newOid === null) {
@@ -221,6 +247,7 @@ export class GitService {
           }
         }
         break;
+      }
       case 'index':
         oldOid = await this.gitlinkInTree(root, 'HEAD', path);
         newOid = await this.gitlinkInIndex(root, path);
@@ -274,15 +301,31 @@ export class GitService {
     };
   }
 
-  /** SHA gitlink của path trong INDEX (`ls-files -s` mode 160000); null = không phải gitlink. */
+  /** SHA gitlink của path trong INDEX; ưu tiên stage 0, conflict thì lấy ours. */
   private async gitlinkInIndex(root: string, path: string): Promise<string | null> {
+    const stages = await this.gitlinkStages(root, path);
+    return stages.get(0) ?? stages.get(2) ?? stages.get(1) ?? stages.get(3) ?? null;
+  }
+
+  /**
+   * Map stage → SHA gitlink của path trong INDEX (`ls-files -s` mode 160000).
+   * Bình thường chỉ có stage 0; đang conflict thì có 1 (base) / 2 (ours) /
+   * 3 (theirs). Map rỗng = không phải gitlink.
+   */
+  private async gitlinkStages(root: string, path: string): Promise<Map<number, string>> {
+    const stages = new Map<number, string>();
     try {
       const out = await this.runner.run(root, ['ls-files', '-s', '-z', '--', path]);
-      const match = /^160000 ([0-9a-f]+) /.exec(out);
-      return match ? match[1]! : null;
+      for (const entry of out.split('\0')) {
+        const match = /^160000 ([0-9a-f]+) ([0-3])\t/.exec(entry);
+        if (match) {
+          stages.set(Number(match[2]), match[1]!);
+        }
+      }
     } catch {
-      return null;
+      // ls-files lỗi = coi như không phải gitlink
     }
+    return stages;
   }
 
   /** SHA gitlink của path trong tree của `rev`; null = rev/path không có hoặc không phải gitlink. */
@@ -551,9 +594,12 @@ export class GitService {
     await this.runner.run(root, ['tag', name, oid], { exclusive: true });
   }
 
-  /** Xoá nhánh AN TOÀN (-d): git tự từ chối nhánh chưa merge / đang checkout. */
-  async deleteBranch(root: string, name: string): Promise<void> {
-    await this.runner.run(root, ['branch', '-d', '--', name], { exclusive: true });
+  /**
+   * Xoá nhánh AN TOÀN (-d): git tự từ chối nhánh chưa merge / đang checkout.
+   * force = -D, chỉ dùng sau khi user xác nhận popup Force Delete ở webview.
+   */
+  async deleteBranch(root: string, name: string, force = false): Promise<void> {
+    await this.runner.run(root, ['branch', force ? '-D' : '-d', '--', name], { exclusive: true });
   }
 
   async renameBranch(root: string, oldName: string, newName: string): Promise<void> {

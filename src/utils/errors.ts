@@ -46,3 +46,11 @@ const DIRTY_TREE_PATTERNS = [
 export function isDirtyWorkingTreeError(message: string): boolean {
   return DIRTY_TREE_PATTERNS.some((pattern) => message.includes(pattern));
 }
+
+/**
+ * `git branch -d` từ chối vì nhánh còn commit chưa merge — repo còn nguyên.
+ * → UI mở popup xác nhận force delete (-D) thay vì banner lỗi thô.
+ */
+export function isBranchNotMergedError(message: string): boolean {
+  return message.includes('is not fully merged');
+}

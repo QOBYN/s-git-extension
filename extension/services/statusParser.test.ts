@@ -86,6 +86,13 @@ describe('parseStatusV2', () => {
     });
   });
 
+  it('entry ignored (record "!") đánh dấu ignored, bỏ "/" cuối của thư mục gộp', () => {
+    const out = porcelain('! node_modules/', '! s-git.vsix');
+    const files = parseStatusV2(out).files;
+    expect(files[0]).toMatchObject({ path: 'node_modules', ignored: true, untracked: false });
+    expect(files[1]).toMatchObject({ path: 's-git.vsix', ignored: true });
+  });
+
   it('output rỗng (working tree sạch, không --branch header) không lỗi', () => {
     const result = parseStatusV2('');
     expect(result.files).toEqual([]);

@@ -66,8 +66,18 @@ export function parseStatusV2(stdout: string): StatusResult {
         });
         break;
       case '!':
-        // File ignored — chỉ xuất hiện với --ignored; chế độ "All files, incl. ignored"
-        // (ui-analysis mục F) sẽ dùng đến, hiện bỏ qua.
+        // `! <path>` — chỉ xuất hiện khi status chạy với --ignored (chế độ
+        // "All files, incl. ignored" — ui-analysis mục F). Thư mục ignore
+        // nguyên cụm được git gộp 1 dòng có '/' cuối — bỏ '/' cho đồng nhất
+        // path (display + tree builder không phải xử lý segment rỗng).
+        result.files.push({
+          path: token.slice(2).replace(/\/$/, ''),
+          staged: null,
+          unstaged: null,
+          untracked: false,
+          conflicted: false,
+          ignored: true,
+        });
         break;
       default:
         // Loại record chưa biết (git version mới) — bỏ qua, không làm hỏng cả status.

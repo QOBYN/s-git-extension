@@ -1,14 +1,16 @@
-// Khung panel chính: [repo tabs] / [toolbar Fetch/Pull/Push — A1] / [toggle
-// Working Tree | History — ui-analysis A2] / thân màn hình / [status bar].
+// Khung panel chính: [toolbar: dropdown repo + Fetch/Pull/Push (A1) + toggle
+// Working Tree | History (A2) + Feedback] / thân màn hình / [status bar].
 // Working Tree và History dùng chung khung này.
 // (Merge/Reset chuyển vào context menu commit của History — ít dùng ở toolbar.)
 
 import { useEffect, useState } from 'react';
 import { ContextMenu, type MenuState } from '../components/ContextMenu';
 import { DirtyGuardDialog } from '../components/DirtyGuardDialog';
+import { FeedbackButton } from '../components/FeedbackButton';
 import { FeedbackDialog } from '../components/FeedbackDialog';
 import { PullDialog } from '../components/PullDialog';
 import { PushToDialog } from '../components/PushToDialog';
+import { RepoDropdown } from '../components/RepoDropdown';
 import { useRepoStore } from '../store/repoStore';
 import { HistoryScreen } from './HistoryScreen';
 import { WorkingTreeScreen } from './WorkingTreeScreen';
@@ -43,38 +45,11 @@ export function MainScreen() {
 
   return (
     <div className="sg-app">
-      <div className="sg-repo-tabs">
-        {store.repos.map((repo) => (
-          <button
-            key={repo.root}
-            className={`sg-repo-tab${repo.root === store.activeRepoRoot ? ' active' : ''}`}
-            onClick={() => void store.selectRepo(repo.root)}
-            title={repo.root}
-          >
-            {repo.name}
-            {repo.activity !== 'none' && <span className="sg-ref-badge tag">{repo.activity}</span>}
-          </button>
-        ))}
-        <span className="sg-diff-spacer" />
-        <div className="sg-mode-toggle">
-          <button
-            className={`sg-mode-btn${store.uiMode === 'workingTree' ? ' active' : ''}`}
-            onClick={() => store.setMode('workingTree')}
-          >
-            Working Tree
-            {changedCount > 0 && <span className="sg-count-badge">{changedCount}</span>}
-          </button>
-          <button
-            className={`sg-mode-btn${store.uiMode === 'history' ? ' active' : ''}`}
-            onClick={() => store.setMode('history')}
-          >
-            History
-          </button>
-        </div>
-      </div>
-
-      {/* Toolbar thao tác repo (ui-analysis A1): icon + nhãn như SmartGit. */}
+      {/* 1 thanh duy nhất: [dropdown repo] [Fetch/Pull/Push] … [toggle mode] [Feedback]
+          — dãy tab repo cũ gộp vào đây dưới dạng dropdown có search. */}
       <div className="sg-toolbar">
+        <RepoDropdown />
+        <span className="sg-toolbar-sep" />
         <ToolbarButton
           label="Fetch"
           title="git fetch --all --prune"
@@ -107,15 +82,24 @@ export function MainScreen() {
             <ChevronDownIcon />
           </button>
         </div>
-        {/* Feedback đứng riêng ở mép phải — không phải thao tác git. */}
         <span className="sg-diff-spacer" />
-        <ToolbarButton
-          label="Feedback"
-          title="Góp ý / báo lỗi — gửi thẳng vào group Telegram của team"
-          disabled={false}
-          onClick={() => setFeedbackOpen(true)}
-          icon={<FeedbackIcon />}
-        />
+        <div className="sg-mode-toggle">
+          <button
+            className={`sg-mode-btn${store.uiMode === 'workingTree' ? ' active' : ''}`}
+            onClick={() => store.setMode('workingTree')}
+          >
+            Working Tree
+            {changedCount > 0 && <span className="sg-count-badge">{changedCount}</span>}
+          </button>
+          <button
+            className={`sg-mode-btn${store.uiMode === 'history' ? ' active' : ''}`}
+            onClick={() => store.setMode('history')}
+          >
+            History
+          </button>
+        </div>
+        {/* Feedback đứng cuối — không phải thao tác git. */}
+        <FeedbackButton onClick={() => setFeedbackOpen(true)} />
       </div>
 
       {store.error !== null && <div className="sg-error">{store.error}</div>}
@@ -238,15 +222,6 @@ function ChevronDownIcon() {
   return (
     <svg width="10" height="16" viewBox="0 0 10 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
       <path d="M2 6.5 5 9.5l3-3" />
-    </svg>
-  );
-}
-
-/** Bong bóng thoại — góp ý/báo lỗi. */
-function FeedbackIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      <path d="M13.5 3.5v6a1.5 1.5 0 0 1-1.5 1.5H7l-3.5 2.5V11H4a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 4 2h8a1.5 1.5 0 0 1 1.5 1.5Z" />
     </svg>
   );
 }

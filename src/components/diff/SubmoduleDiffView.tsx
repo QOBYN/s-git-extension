@@ -1,9 +1,10 @@
 // Diff của SUBMODULE / repo git lồng: gitlink không có nội dung text — hiển thị
-// so sánh con trỏ (SHA cũ → mới) + lịch sử dạng 2 ĐƯỜNG RAY chụm về 1 gốc:
-//   · ray xanh (+) = commit thêm vào (old..new), ray đỏ (−) = commit bị bỏ
-//   · con trỏ OLD/NEW ghim chip ngay trên dòng commit tương ứng trong ray
+// so sánh con trỏ (SHA cũ → mới) + lịch sử dạng GRAPH 1 KHUNG 2 LANE chụm về 1 gốc:
+//   · commit 2 phía trộn chung 1 danh sách, sắp theo thời gian (mới nhất trên cùng)
+//   · lane trái đỏ (−) = commit bị bỏ (new..old), lane phải xanh (+) = thêm vào (old..new)
+//   · con trỏ OLD/NEW ghim chip ngay trên dòng commit tương ứng trong lane
 //   · dòng NEO dưới cùng: fast-forward = chính commit OLD (thấy hash old trong
-//     dòng chảy), phân kỳ = merge-base — điểm 2 ray gặp nhau.
+//     dòng chảy), phân kỳ = merge-base — điểm 2 lane gặp nhau.
 
 import { useState } from 'react';
 import type { CommitInfo, SubmoduleDiffInfo } from '../../../shared/types';
@@ -74,14 +75,18 @@ export function SubmoduleDiffView({ info, path }: { info: SubmoduleDiffInfo; pat
   );
 }
 
+type Side = 'ahead' | 'behind';
+
 /**
- * Lịch sử dạng cây 1 gốc 2 nhánh. Con trỏ DỜI (state 'changed') thì LUÔN vẽ đủ
- * 2 cột — trái = phía OLD (đỏ), phải = phía NEW (xanh) — phía không có commit
- * riêng vẫn giữ ray + ghi chú, 2 nhánh chụm về dòng neo (gốc):
- *  · fast-forward:  cột trái trống, neo = commit OLD
- *  · lùi con trỏ:   cột phải trống, neo = commit NEW
- *  · phân kỳ:       2 cột có commit, neo = merge-base
- *  · mới thêm/xoá:  1 ray đơn, không neo (không có phía kia)
+ * Lịch sử dạng cây 1 gốc 2 nhánh, vẽ trong 1 KHUNG: commit 2 phía trộn chung,
+ * sắp theo thời gian giảm dần; mỗi dòng chấm nút vào lane của phía nó. Con trỏ
+ * DỜI (state 'changed') thì LUÔN vẽ đủ 2 lane — trái = phía OLD (đỏ), phải =
+ * phía NEW (xanh) — phía không có commit riêng vẫn giữ lane + ghi chú, 2 nhánh
+ * chụm về dòng neo (gốc):
+ *  · fast-forward:  lane trái trống, neo = commit OLD
+ *  · lùi con trỏ:   lane phải trống, neo = commit NEW
+ *  · phân kỳ:       2 lane có commit, neo = merge-base
+ *  · mới thêm/xoá:  1 lane đơn, không neo (không có phía kia)
  */
 function HistoryRails({
   info,
@@ -116,7 +121,7 @@ function HistoryRails({
   const twoRails = state === 'changed';
 
   /** Range như host đã dùng cho chiều đó — "old..new" / "new..old" / 1 oid. */
-  const rangeOf = (side: 'ahead' | 'behind'): string | null => {
+  const rangeOf = (side: Side): string | null => {
     const { oldOid, newOid } = info;
     if (oldOid !== null && newOid !== null) {
       return side === 'ahead' ? `${oldOid}..${newOid}` : `${newOid}..${oldOid}`;
@@ -124,7 +129,7 @@ function HistoryRails({
     return side === 'ahead' ? newOid : oldOid;
   };
 
-  const loadMore = async (side: 'ahead' | 'behind') => {
+  const loadMore = async (side: Side) => {
     const range = rangeOf(side);
     if (repoRoot === null || range === null || loadingSide !== null) {
       return;
@@ -161,45 +166,99 @@ function HistoryRails({
     }
   }
 
+  /** Thứ tự lane trên mỗi dòng: 2 lane khi con trỏ dời, 1 lane khi thêm/xoá. */
+  const lanes: Side[] = twoRails ? ['behind', 'ahead'] : hasAdded ? ['ahead'] : ['behind'];
+
+  // Trộn commit 2 phía vào 1 danh sách, mới nhất trên cùng (sort ổn định nên
+  // các commit cùng timestamp giữ nguyên thứ tự git log của phía nó).
+  const entries: { commit: CommitInfo; side: Side }[] = [
+    ...behind.map((c) => ({ commit: c, side: 'behind' as const })),
+    ...ahead.map((c) => ({ commit: c, side: 'ahead' as const })),
+  ].sort((a, b) => Date.parse(b.commit.date) - Date.parse(a.commit.date));
+
+  const pointerOf = (side: Side) =>
+    side === 'behind'
+      ? info.oldOid !== null
+        ? { oid: info.oldOid, label: 'OLD' }
+        : null
+      : info.newOid !== null
+        ? { oid: info.newOid, label: 'NEW' }
+        : null;
+
   return (
     <div className="sg-submodule-rails">
-      <div className="sg-submodule-rails-columns">
-        {(twoRails || hasRemoved) && (
-          <Rail
-            title={
-              state === 'removed'
-                ? `History before removal (${count(behind, behindHasMore)})`
-                : `Commits removed (${count(behind, behindHasMore)})`
-            }
-            commits={behind}
-            tone="removed"
-            hasMore={behindHasMore}
-            loadingMore={loadingSide === 'behind'}
-            onLoadMore={() => void loadMore('behind')}
-            pointer={info.oldOid !== null ? { oid: info.oldOid, label: 'OLD' } : null}
-            emptyNote="none — OLD is an ancestor of NEW"
-          />
-        )}
-        {(twoRails || hasAdded) && (
-          <Rail
-            title={
-              state === 'added'
-                ? `Commits included (${count(ahead, aheadHasMore)} — recent history)`
-                : `Commits added (${count(ahead, aheadHasMore)})`
-            }
-            commits={ahead}
-            tone="added"
-            hasMore={aheadHasMore}
-            loadingMore={loadingSide === 'ahead'}
-            onLoadMore={() => void loadMore('ahead')}
-            pointer={info.newOid !== null ? { oid: info.newOid, label: 'NEW' } : null}
-            emptyNote="none — NEW is an ancestor of OLD"
-          />
+      <div className="sg-submodule-history-title">
+        {state === 'added' && `Commits included (${count(ahead, aheadHasMore)} — recent history)`}
+        {state === 'removed' && `History before removal (${count(behind, behindHasMore)})`}
+        {state === 'changed' && (
+          <>
+            <span className="sg-submodule-title-part removed">
+              − removed ({count(behind, behindHasMore)})
+            </span>
+            <span className="sg-submodule-title-sep">·</span>
+            <span className="sg-submodule-title-part added">
+              + added ({count(ahead, aheadHasMore)})
+            </span>
+          </>
         )}
       </div>
+      <div className="sg-submodule-history-scroll">
+        <div
+          className={`sg-submodule-history-body lanes-${lanes.length} ${twoRails ? '' : hasAdded ? 'added' : 'removed'}`}
+        >
+        {twoRails && !hasRemoved && (
+          <div className="sg-submodule-commit">
+            <Lanes lanes={lanes} side="behind" dashed />
+            <span className="sg-detail-meta">none — OLD is an ancestor of NEW</span>
+          </div>
+        )}
+        {twoRails && !hasAdded && (
+          <div className="sg-submodule-commit">
+            <Lanes lanes={lanes} side="ahead" dashed />
+            <span className="sg-detail-meta">none — NEW is an ancestor of OLD</span>
+          </div>
+        )}
+        {entries.map(({ commit: c, side }) => {
+          const pointer = pointerOf(side);
+          return (
+            <div key={c.oid} className="sg-submodule-commit" title={`${c.oid}\n${c.subject}`}>
+              <Lanes lanes={lanes} side={side} />
+              {pointer !== null && c.oid === pointer.oid && (
+                <span className="sg-submodule-pointer-chip">{pointer.label}</span>
+              )}
+              <AuthorBadge name={c.author} />
+              {c.refs.map((ref) => (
+                <RefBadge key={ref} decoration={ref} />
+              ))}
+              <span className="sg-submodule-subject">{c.subject}</span>
+              <code className="sg-submodule-sha dim">{c.oid.slice(0, 8)}</code>
+              <span className="sg-commit-date">{formatRelativeDate(c.date)}</span>
+            </div>
+          );
+        })}
+        {behindHasMore && (
+          <MoreRow
+            lanes={lanes}
+            side="behind"
+            loading={loadingSide === 'behind'}
+            label={twoRails ? 'show earlier removed commits' : 'show earlier commits'}
+            onClick={() => void loadMore('behind')}
+          />
+        )}
+        {aheadHasMore && (
+          <MoreRow
+            lanes={lanes}
+            side="ahead"
+            loading={loadingSide === 'ahead'}
+            label={twoRails ? 'show earlier added commits' : 'show earlier commits'}
+            onClick={() => void loadMore('ahead')}
+          />
+        )}
+        </div>
+      </div>
       {anchor !== null && (
-        // Vùng hội tụ: kéo 2 nhánh xuống gốc — nhánh phải (NEW) vòng về gốc
-        // trái, thành hình cây 1 gốc 2 nhánh.
+        // Vùng hội tụ: kéo 2 nhánh xuống gốc — nhánh phải (NEW, xanh) vòng từ
+        // lane phải về gốc trái, thành hình cây 1 gốc 2 nhánh.
         <div
           className={`sg-submodule-converge ${twoRails ? 'both' : hasAdded ? 'added' : 'removed'}`}
         />
@@ -273,68 +332,58 @@ function SubmoduleSide({
   );
 }
 
-/** 1 đường ray: kẻ dọc màu theo chiều, mỗi commit là nút tròn +/− trên ray. */
-function Rail({
-  title,
-  commits,
-  tone,
-  hasMore,
-  loadingMore,
-  onLoadMore,
-  pointer,
-  emptyNote,
+const toneOf = (side: Side): 'added' | 'removed' => (side === 'ahead' ? 'added' : 'removed');
+
+/**
+ * Cụm ô lane đầu mỗi dòng: mỗi lane 1 ô cố định để dòng nào cũng thẳng cột;
+ * ô của phía `side` chấm nút tròn (+/−, hoặc nét đứt cho dòng phụ), ô kia để
+ * trống cho đường kẻ dọc của lane chạy xuyên qua.
+ */
+function Lanes({
+  lanes,
+  side,
+  dashed,
+  symbol,
 }: {
-  title: string;
-  commits: CommitInfo[];
-  tone: 'added' | 'removed';
-  /** Còn commit chưa hiện — dòng "⋮" thành nút load trang tiếp theo. */
-  hasMore: boolean;
-  loadingMore: boolean;
-  onLoadMore(): void;
-  /** Con trỏ ghim chip trên dòng commit trùng oid (NEW ở ray xanh, OLD ở ray đỏ). */
-  pointer: { oid: string; label: string } | null;
-  /** Ghi chú khi nhánh này không có commit riêng (vẫn giữ ray cho đủ 2 đường). */
-  emptyNote?: string;
+  lanes: Side[];
+  side: Side;
+  dashed?: boolean;
+  symbol?: string;
 }) {
   return (
-    <div className={`sg-submodule-history ${tone}`}>
-      <div className="sg-submodule-history-title">{title}</div>
-      <div className="sg-submodule-history-body">
-        {commits.length === 0 && emptyNote !== undefined && (
-          <div className="sg-submodule-commit">
-            <span className={`sg-submodule-dot more ${tone}`} />
-            <span className="sg-detail-meta">{emptyNote}</span>
-          </div>
-        )}
-        {commits.map((c) => (
-          <div key={c.oid} className="sg-submodule-commit" title={`${c.oid}\n${c.subject}`}>
-            <span className={`sg-submodule-dot ${tone}`}>{tone === 'added' ? '+' : '−'}</span>
-            {pointer !== null && c.oid === pointer.oid && (
-              <span className="sg-submodule-pointer-chip">{pointer.label}</span>
-            )}
-            <AuthorBadge name={c.author} />
-            {c.refs.map((ref) => (
-              <RefBadge key={ref} decoration={ref} />
-            ))}
-            <span className="sg-submodule-subject">{c.subject}</span>
-            <code className="sg-submodule-sha dim">{c.oid.slice(0, 8)}</code>
-            <span className="sg-commit-date">{formatRelativeDate(c.date)}</span>
-          </div>
-        ))}
-        {hasMore && (
-          <button
-            className="sg-submodule-commit sg-submodule-more"
-            disabled={loadingMore}
-            onClick={onLoadMore}
-          >
-            <span className={`sg-submodule-dot more ${tone}`}>⋮</span>
-            <span className="sg-detail-meta">
-              {loadingMore ? 'loading…' : 'show earlier commits'}
+    <>
+      {lanes.map((lane) => (
+        <span key={lane} className="sg-submodule-lane">
+          {lane === side && (
+            <span className={`sg-submodule-dot ${dashed ? 'more ' : ''}${toneOf(side)}`}>
+              {symbol ?? (dashed ? '' : side === 'ahead' ? '+' : '−')}
             </span>
-          </button>
-        )}
-      </div>
-    </div>
+          )}
+        </span>
+      ))}
+    </>
+  );
+}
+
+/** Dòng "show earlier commits" — button load trang tiếp theo của 1 phía. */
+function MoreRow({
+  lanes,
+  side,
+  loading,
+  label,
+  onClick,
+}: {
+  lanes: Side[];
+  side: Side;
+  loading: boolean;
+  label: string;
+  onClick(): void;
+}) {
+  return (
+    <button className="sg-submodule-commit sg-submodule-more" disabled={loading} onClick={onClick}>
+      <Lanes lanes={lanes} side={side} dashed symbol="⋮" />
+      <span className="sg-detail-meta">{loading ? 'loading…' : label}</span>
+    </button>
   );
 }
 

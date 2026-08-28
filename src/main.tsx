@@ -3,6 +3,12 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import './styles/global.css';
 
+// Dev-only: hover element + ⌘C để copy context component (file:line) cho AI agent.
+// Không bao giờ vào bundle production — vite tree-shake cả dynamic import này khi build.
+if (import.meta.env.DEV) {
+  import('react-grab');
+}
+
 // Webview không có devtools mở sẵn — MỌI lỗi phải hiện ra màn hình,
 // không bao giờ để màn đen im lặng.
 function showFatal(message: string): void {

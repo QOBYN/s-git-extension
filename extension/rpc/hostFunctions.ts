@@ -33,6 +33,12 @@ export interface ShellPort {
   openFile(repoRoot: string, relPath: string): void;
   revealInOS(repoRoot: string, relPath: string): void;
   openFileLog(repoRoot: string, relPath: string): void;
+  openInTerminal(repoRoot: string, relPath: string): void;
+  findInFolder(repoRoot: string, relPath: string): void;
+  /** Đổi tên giữ nguyên thư mục cha. */
+  renamePath(repoRoot: string, relPath: string, newName: string): Promise<void>;
+  /** Hỏi xác nhận (modal VSCode) rồi chuyển vào Trash — false = user huỷ. */
+  deletePath(repoRoot: string, relPath: string): Promise<boolean>;
 }
 
 export interface HostFunctionDeps {
@@ -97,8 +103,11 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
       panelOpener.open(repoRoot, mode, folder ?? null, ref ?? null, search ?? null);
     },
 
-    async getStatus(repoRoot): Promise<WorkingTreeStatus> {
-      const [status, gitDir] = await Promise.all([git.getStatus(repoRoot), git.getGitDir(repoRoot)]);
+    async getStatus(repoRoot, scope): Promise<WorkingTreeStatus> {
+      const [status, gitDir] = await Promise.all([
+        git.getStatus(repoRoot, scope),
+        git.getGitDir(repoRoot),
+      ]);
       const state = await stateReader.read(gitDir);
       return {
         ...status,
@@ -165,7 +174,7 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
     stashPop: (repoRoot) => git.stashPop(repoRoot),
     createBranch: (repoRoot, name, oid) => git.createBranch(repoRoot, name, oid),
     createTag: (repoRoot, name, oid) => git.createTag(repoRoot, name, oid),
-    deleteBranch: (repoRoot, name) => git.deleteBranch(repoRoot, name),
+    deleteBranch: (repoRoot, name, force) => git.deleteBranch(repoRoot, name, force),
     renameBranch: (repoRoot, oldName, newName) => git.renameBranch(repoRoot, oldName, newName),
     deleteTag: (repoRoot, name) => git.deleteTag(repoRoot, name),
 
@@ -178,6 +187,14 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
     async openFileLog(repoRoot, relPath) {
       shell.openFileLog(repoRoot, relPath);
     },
+    async openInTerminal(repoRoot, relPath) {
+      shell.openInTerminal(repoRoot, relPath);
+    },
+    async findInFolder(repoRoot, relPath) {
+      shell.findInFolder(repoRoot, relPath);
+    },
+    renamePath: (repoRoot, relPath, newName) => shell.renamePath(repoRoot, relPath, newName),
+    deletePath: (repoRoot, relPath) => shell.deletePath(repoRoot, relPath),
 
     stageHunk: (repoRoot, patch) => git.stageHunk(repoRoot, patch),
     unstageHunk: (repoRoot, patch) => git.unstageHunk(repoRoot, patch),
@@ -271,7 +288,28 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
     try {
       return await runner.run(repoRoot, ['show', spec], { encoding: 'base64' });
     } catch (error) {
-      if (error instanceof GitError && isMissingPathError(error)) {
+      if (!(error instanceof GitError)) {
+        throw error;
+      }
+      // Path đang CONFLICT: index chỉ có stage 1/2/3, không có stage 0 nên
+      // `git show :path` fail "not at stage 0". Đọc bản "ours" (:2:) thay thế
+      // (working tree đang chứa marker conflict để so với nó); ours không có
+      // (conflict kiểu deleted-by-us) thì lùi về base (:1:). Với gitlink,
+      // `:2:path` fail "bad object" → ném ra để getDiff rơi vào view submodule.
+      if (spec.startsWith(':') && error.stderr.includes('not at stage 0')) {
+        for (const stage of [2, 1]) {
+          try {
+            return await runner.run(repoRoot, ['show', `:${stage}${spec}`], { encoding: 'base64' });
+          } catch (retryError) {
+            if (retryError instanceof GitError && retryError.stderr.includes('not at stage')) {
+              continue;
+            }
+            throw retryError;
+          }
+        }
+        return '';
+      }
+      if (isMissingPathError(error)) {
         return '';
       }
       throw error;

@@ -276,6 +276,7 @@ export function HistoryScreen() {
               nhánh CỦA RIÊNG màn History (tách với filter sidebar — luôn thấy
               rõ đang xem nhánh nào) + ô search commit (lọc trang đã tải). */}
           <div className="sg-graph-header">
+            <span className="sg-graph-label">Branch:</span>
             <BranchFilter />
             <span className="sg-diff-spacer" />
             <input

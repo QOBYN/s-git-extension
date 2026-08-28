@@ -22,7 +22,8 @@ import type {
   WorkingTreeStatus,
 } from '../../shared/types';
 import { host, setNotificationHandlers } from '../rpc';
-import { formatError, isDirtyWorkingTreeError } from '../utils/errors';
+import { useViewPrefs } from './viewPrefsStore';
+import { formatError, isBranchNotMergedError, isDirtyWorkingTreeError } from '../utils/errors';
 import { buildHunkPatch, type LineChange } from '../utils/patchBuilder';
 
 /**
@@ -39,6 +40,17 @@ export interface DirtyGuard {
   repoRoot: string;
   /** Chạy lại thao tác gốc (sau khi đã stash). */
   retry(): Promise<void>;
+}
+
+/**
+ * Popup Force Delete: `branch -d` bị git từ chối vì nhánh còn commit chưa merge
+ * — chờ user xác nhận xoá cưỡng bức (-D) hoặc huỷ. Repo chưa đổi gì.
+ */
+export interface ForceDeletePrompt {
+  repoRoot: string;
+  branch: string;
+  /** stderr nguyên văn của git ("… is not fully merged"). */
+  message: string;
 }
 
 /** 2 màn hình của panel chính — toggle Local Files | History của SmartGit (A2). */
@@ -90,6 +102,12 @@ interface RepoStoreState {
   statusByRepo: Record<string, FileChange[]>;
   /** Ô filter nhánh/tag của sidebar tab Git. */
   sidebarRefFilter: string;
+  /**
+   * Lệnh Expand All / Collapse All cho cây Git sidebar — broadcast: seq tăng mỗi
+   * lần bấm, mọi node đang mount nghe theo `open`; seq 0 = chưa bấm lần nào
+   * (node giữ defaultOpen riêng).
+   */
+  sidebarTreeCmd: { seq: number; open: boolean };
   workingSelection: WorkingSelection | null;
   workingDiff: DiffPayload | null;
   workingDiffLoading: boolean;
@@ -101,6 +119,8 @@ interface RepoStoreState {
   error: string | null;
   /** Popup "working tree bẩn" đang chờ user quyết — null = không có. */
   dirtyGuard: DirtyGuard | null;
+  /** Popup xác nhận force delete nhánh chưa merge — null = không có. */
+  forceDeletePrompt: ForceDeletePrompt | null;
 
   /** Popup Dirty Guard: Stash & Retry — stash → thao tác gốc → stash pop. */
   retryDirtyGuardWithStash(): Promise<void>;
@@ -159,8 +179,19 @@ interface RepoStoreState {
   loadAllStatuses(): Promise<void>;
   /** Sidebar: chạy 1 thao tác git bất kỳ + refresh refs/status/repos. */
   sidebarGitOp(op: () => Promise<void>, successMessage: string): Promise<void>;
+  /** Context menu folder (tab Working Tree): đổi tên thư mục rồi refresh cây + status. */
+  renameFolder(repoRoot: string, folder: string, newName: string): Promise<void>;
+  /** Context menu folder: xoá thư mục (host xác nhận + chuyển Trash) rồi refresh cây. */
+  deleteFolder(repoRoot: string, folder: string): Promise<void>;
+  /** Xoá nhánh an toàn (-d); git chê "not fully merged" → mở popup Force Delete. */
+  deleteBranchSafe(repoRoot: string, branch: string): Promise<void>;
+  /** Popup Force Delete: user xác nhận — chạy lại với -D. */
+  confirmForceDeleteBranch(): Promise<void>;
+  dismissForceDeleteBranch(): void;
   setCommitSearch(search: string | null): void;
   setSidebarRefFilter(filter: string): void;
+  /** Sidebar tab Git: mở (true) / đóng (false) toàn bộ node cây một lượt. */
+  setSidebarTreeOpen(open: boolean): void;
   setCommitMessage(message: string): void;
   stageFiles(paths: string[]): Promise<void>;
   unstageFiles(paths: string[]): Promise<void>;
@@ -271,7 +302,9 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
 
   async function fetchStatus(root: string): Promise<void> {
     try {
-      const status = await host.getStatus(root);
+      // Scope theo filter pane Changes (all = kèm file không đổi, ignored = kèm
+      // .gitignore) — mọi lần refetch (sau stage/commit/watcher) theo pref hiện tại.
+      const status = await host.getStatus(root, useViewPrefs.getState().changesFilter);
       set({ status });
       // Merge/cherry-pick đang dở: tự điền message nếu user chưa gõ gì (D2).
       if (status.activityMessage && get().commitMessage.trim() === '') {
@@ -324,6 +357,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     foldersByRepo: {},
     statusByRepo: {},
     sidebarRefFilter: '',
+    sidebarTreeCmd: { seq: 0, open: false },
     workingSelection: null,
     workingDiff: null,
     workingDiffLoading: false,
@@ -511,12 +545,77 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
       set({ repos: await host.listRepos() });
     },
 
+    async renameFolder(repoRoot, folder, newName) {
+      set({ error: null });
+      try {
+        await host.renamePath(repoRoot, folder, newName);
+        set({ statusMessage: `Renamed to '${newName}'.` });
+      } catch (error) {
+        set({ error: formatError(error) });
+      }
+      await Promise.all([get().loadAllFolders(), get().loadAllStatuses()]);
+    },
+
+    async deleteFolder(repoRoot, folder) {
+      set({ error: null });
+      try {
+        // false = user huỷ ở dialog xác nhận phía VSCode — chưa xoá gì.
+        if (!(await host.deletePath(repoRoot, folder))) {
+          return;
+        }
+        set({ statusMessage: `Deleted '${folder}'.` });
+      } catch (error) {
+        set({ error: formatError(error) });
+      }
+      await Promise.all([get().loadAllFolders(), get().loadAllStatuses()]);
+    },
+
+    forceDeletePrompt: null,
+
+    async deleteBranchSafe(repoRoot, branch) {
+      set({ error: null });
+      try {
+        await host.deleteBranch(repoRoot, branch, false);
+        set({ statusMessage: `Deleted '${branch}'.` });
+      } catch (error) {
+        const message = formatError(error);
+        if (isBranchNotMergedError(message)) {
+          // git từ chối TRƯỚC khi đổi gì — mở popup xác nhận -D, khỏi refresh.
+          set({ forceDeletePrompt: { repoRoot, branch, message } });
+          return;
+        }
+        set({ error: message });
+      }
+      await Promise.all([get().loadAllRefs(), get().loadAllRemotes(), get().loadAllStatuses()]);
+      set({ repos: await host.listRepos() });
+    },
+
+    async confirmForceDeleteBranch() {
+      const prompt = get().forceDeletePrompt;
+      if (prompt === null) {
+        return;
+      }
+      set({ forceDeletePrompt: null });
+      await get().sidebarGitOp(
+        () => host.deleteBranch(prompt.repoRoot, prompt.branch, true),
+        `Deleted '${prompt.branch}' (force).`,
+      );
+    },
+
+    dismissForceDeleteBranch() {
+      set({ forceDeletePrompt: null });
+    },
+
     setCommitSearch(search) {
       set({ commitSearch: search });
     },
 
     setSidebarRefFilter(filter) {
       set({ sidebarRefFilter: filter });
+    },
+
+    setSidebarTreeOpen(open) {
+      set({ sidebarTreeCmd: { seq: get().sidebarTreeCmd.seq + 1, open } });
     },
 
     setFolderScope(folder) {
