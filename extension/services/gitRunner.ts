@@ -1,6 +1,7 @@
 // Cổng duy nhất để chạy lệnh git. Mọi service khác KHÔNG được tự spawn process.
 
 import { spawn } from 'node:child_process';
+import { createWriteStream } from 'node:fs';
 import { DEFAULT_GIT_MAX_OUTPUT_BYTES } from '../../shared/constants';
 import type { GitErrorInfo } from '../../shared/types';
 import { KeyedMutex } from '../core/async';
@@ -22,6 +23,11 @@ export interface GitRunOptions {
 
 export interface GitRunner {
   run(cwd: string, args: string[], opts?: GitRunOptions): Promise<string>;
+  /**
+   * Chạy lệnh git và ghi stdout THẲNG ra file (không buffer trong bộ nhớ,
+   * không giới hạn kích thước) — xuất blob lớn (video…) ra thư mục tạm.
+   */
+  runToFile(cwd: string, args: string[], outFile: string): Promise<void>;
 }
 
 /** Lỗi git có cấu trúc — giữ nguyên stderr để UI hiển thị đúng thông điệp của git. */
@@ -38,6 +44,17 @@ export class GitError extends Error {
   /** Dạng serializable để gửi qua RPC (shared/types.GitErrorInfo). */
   toInfo(): GitErrorInfo {
     return { command: this.command, code: this.code, stderr: this.stderr };
+  }
+}
+
+/**
+ * Output vượt maxOutputBytes — tách class riêng để caller phân biệt bằng
+ * instanceof thay vì match chuỗi stderr (getDiff đổi sang view "file quá lớn").
+ */
+export class GitOutputLimitError extends GitError {
+  constructor(command: string, maxBytes: number) {
+    super(command, -1, `output exceeded ${maxBytes} bytes`);
+    this.name = 'GitOutputLimitError';
   }
 }
 
@@ -67,26 +84,69 @@ export class SpawnGitRunner implements GitRunner {
     return this.spawnGit(cwd, args, opts);
   }
 
+  async runToFile(cwd: string, args: string[], outFile: string): Promise<void> {
+    // Là lệnh đọc — cùng quy tắc chờ lệnh ghi đang dở như run().
+    await this.mutex.pending(cwd);
+    return new Promise<void>((resolve, reject) => {
+      const child = this.spawnChild(cwd, args);
+      const out = createWriteStream(outFile);
+      const stderr: Buffer[] = [];
+      let settled = false;
+
+      const fail = (error: Error) => {
+        if (!settled) {
+          settled = true;
+          child.kill();
+          out.destroy();
+          reject(error);
+        }
+      };
+
+      out.on('error', fail); // đĩa đầy / thư mục tạm bị xoá…
+      child.stdout.pipe(out);
+      child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
+      child.on('error', fail);
+      child.on('close', (code) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (code === 0) {
+          // Chờ flush hết xuống đĩa rồi mới resolve — caller đọc file ngay sau đó.
+          out.end(() => resolve());
+        } else {
+          out.destroy();
+          reject(new GitError(args.join(' '), code ?? -1, Buffer.concat(stderr).toString('utf8')));
+        }
+      });
+      child.stdin.end();
+    });
+  }
+
+  private spawnChild(cwd: string, args: string[]) {
+    return spawn(this.gitPath, args, {
+      cwd,
+      env: {
+        ...process.env,
+        // Không giữ optional lock — tránh chặn git của user chạy song song ngoài terminal.
+        GIT_OPTIONAL_LOCKS: '0',
+        // Thông điệp lỗi tiếng Anh ổn định để phát hiện các case như "empty repository".
+        LC_ALL: 'C',
+        // Lệnh cần editor (rebase --continue…) không được treo chờ editor:
+        // 'true' = chấp nhận message mặc định.
+        GIT_EDITOR: 'true',
+        // Lệnh network (fetch/pull/push) không được treo chờ nhập credentials
+        // trong process nền — fail ngay với thông điệp rõ (user dùng ssh-agent/
+        // credential helper như các git GUI khác).
+        GIT_TERMINAL_PROMPT: '0',
+      },
+    });
+  }
+
   private spawnGit(cwd: string, args: string[], opts: GitRunOptions): Promise<string> {
     const maxBytes = opts.maxOutputBytes ?? this.maxOutputBytes;
     return new Promise<string>((resolve, reject) => {
-      const child = spawn(this.gitPath, args, {
-        cwd,
-        env: {
-          ...process.env,
-          // Không giữ optional lock — tránh chặn git của user chạy song song ngoài terminal.
-          GIT_OPTIONAL_LOCKS: '0',
-          // Thông điệp lỗi tiếng Anh ổn định để phát hiện các case như "empty repository".
-          LC_ALL: 'C',
-          // Lệnh cần editor (rebase --continue…) không được treo chờ editor:
-          // 'true' = chấp nhận message mặc định.
-          GIT_EDITOR: 'true',
-          // Lệnh network (fetch/pull/push) không được treo chờ nhập credentials
-          // trong process nền — fail ngay với thông điệp rõ (user dùng ssh-agent/
-          // credential helper như các git GUI khác).
-          GIT_TERMINAL_PROMPT: '0',
-        },
-      });
+      const child = this.spawnChild(cwd, args);
 
       const stdout: Buffer[] = [];
       const stderr: Buffer[] = [];
@@ -104,7 +164,7 @@ export class SpawnGitRunner implements GitRunner {
       child.stdout.on('data', (chunk: Buffer) => {
         outputSize += chunk.length;
         if (outputSize > maxBytes) {
-          fail(new GitError(args.join(' '), -1, `output exceeded ${maxBytes} bytes`));
+          fail(new GitOutputLimitError(args.join(' '), maxBytes));
           return;
         }
         stdout.push(chunk);

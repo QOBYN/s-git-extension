@@ -12,6 +12,7 @@ import { BinaryDiffNote } from './diff/BinaryDiffNote';
 import { CsvDiffView, useCsvTable } from './diff/CsvDiffView';
 import { ImageDiffView } from './diff/ImageDiffView';
 import { SubmoduleDiffView } from './diff/SubmoduleDiffView';
+import { VideoDiffView } from './diff/VideoDiffView';
 import { DiffView, type DiffStats, type DiffViewHandle } from './DiffView';
 
 interface Props {
@@ -277,6 +278,10 @@ export function DiffPanel({
         />
       )}
       {diff !== null && kind === 'image' && <ImageDiffView path={path} diff={diff} />}
+      {diff?.media !== undefined && kind === 'video' && (
+        // Đổi file → remount để reset trạng thái "codec không phát được".
+        <VideoDiffView key={path} media={diff.media} />
+      )}
       {diff !== null && kind === 'binary' && <BinaryDiffNote diff={diff} />}
       {diff !== null && showCsvTable && csvTable !== null && <CsvDiffView table={csvTable} />}
       {showTextView && diff !== null && (

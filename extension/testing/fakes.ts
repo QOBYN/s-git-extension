@@ -29,6 +29,18 @@ export class FakeGitRunner implements GitRunner {
     return result;
   }
 
+  /** Ghi stdout của handler vào `writtenFiles` thay vì đĩa thật. */
+  readonly writtenFiles = new Map<string, string>();
+
+  async runToFile(cwd: string, args: string[], outFile: string): Promise<void> {
+    this.calls.push({ cwd, args, opts: {} });
+    const result = this.handler(args, cwd);
+    if (result instanceof GitError) {
+      throw result;
+    }
+    this.writtenFiles.set(outFile, result);
+  }
+
   /** Args của lần gọi có phần tử đầu là `command` — tiện assert 1 lệnh cụ thể. */
   callsOf(command: string): RecordedCall[] {
     return this.calls.filter((c) => c.args[0] === command);

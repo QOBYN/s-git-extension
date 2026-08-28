@@ -122,6 +122,12 @@ export interface HostFunctions {
   // ---- context menu file (ui-analysis G) — hành động phía VSCode ----
   /** Mở file bằng editor VSCode thường ("Open in Editor" — đảo chiều "Open in VSCode" của SmartGit). */
   openFile(repoRoot: string, relPath: string): Promise<void>;
+  /**
+   * Mở 1 file trên đĩa bằng ứng dụng mặc định của HĐH (video player, PDF
+   * viewer…). Webview chỉ gọi với fsPath host đưa trong DiffPayload.media —
+   * không tự dựng đường dẫn.
+   */
+  openPathExternal(fsPath: string): Promise<void>;
   /** Reveal in Finder/Explorer của hệ điều hành. */
   revealInOS(repoRoot: string, relPath: string): Promise<void>;
   /** Mở tab File Log cho 1 file (menu "File Log" — đường vào màn hình C). */

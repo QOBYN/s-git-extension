@@ -154,6 +154,37 @@ export interface DiffPayload {
    * modified rỗng, webview render view so sánh con trỏ thay vì diff text.
    */
   submodule?: SubmoduleDiffInfo;
+  /**
+   * Nội dung KHÔNG đi qua RPC (video / binary lớn): original/modified rỗng,
+   * webview render theo thông tin ở đây (thẻ <video> đọc qua webview URI,
+   * hoặc note kích thước).
+   */
+  media?: MediaDiffInfo;
+}
+
+/**
+ * Diff của file không gửi nội dung qua RPC:
+ *  - 'video':    2 phía được cấp webview URI để <video> đọc thẳng từ đĩa
+ *                (file working tree, hoặc blob đã xuất ra thư mục tạm).
+ *  - 'binary':   đuôi nhị phân đã biết (zip/pdf/mp3…) — chỉ có kích thước,
+ *                không tốn công đọc nội dung.
+ *  - 'tooLarge': nội dung vượt giới hạn đọc của host (ảnh/text khổng lồ).
+ */
+export interface MediaDiffInfo {
+  kind: 'video' | 'binary' | 'tooLarge';
+  /** Webview URI cho <video> (chỉ kind 'video'); null = phía đó không tồn tại. */
+  originalUri: string | null;
+  modifiedUri: string | null;
+  /** Kích thước byte từng phía (best-effort); null = phía đó không tồn tại. */
+  originalSize: number | null;
+  modifiedSize: number | null;
+  /**
+   * Đường dẫn tuyệt đối trên đĩa (file working tree / blob đã xuất ra temp) —
+   * nút "Open with system player" gọi openPathExternal với path này.
+   * null = phía đó không có sẵn file trên đĩa.
+   */
+  originalFsPath: string | null;
+  modifiedFsPath: string | null;
 }
 
 /**

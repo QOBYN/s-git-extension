@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { extensionOf, hasBinaryContent, isKnownBinaryExtension } from './binaryDetect';
+import {
+  extensionOf,
+  hasBinaryContent,
+  isKnownBinaryExtension,
+  isOpaqueBinaryExtension,
+  isVideoExtension,
+} from './binaryDetect';
 
 describe('binaryDetect', () => {
   it('nhận diện đuôi ảnh và binary, không phân biệt hoa thường', () => {
@@ -7,6 +13,17 @@ describe('binaryDetect', () => {
     expect(isKnownBinaryExtension('doc.pdf')).toBe(true);
     expect(isKnownBinaryExtension('src/app.ts')).toBe(false);
     expect(isKnownBinaryExtension('Makefile')).toBe(false);
+  });
+
+  it('video tách riêng khỏi binary đục — có view <video> riêng', () => {
+    expect(isVideoExtension('clip/intro.OGV')).toBe(true);
+    expect(isVideoExtension('movie.mp4')).toBe(true);
+    expect(isVideoExtension('song.mp3')).toBe(false);
+    expect(isOpaqueBinaryExtension('movie.mp4')).toBe(false);
+    expect(isOpaqueBinaryExtension('song.mp3')).toBe(true);
+    expect(isOpaqueBinaryExtension('logo.png')).toBe(false); // ảnh có view riêng
+    // video vẫn tính là binary đã biết (không được rơi vào diff text)
+    expect(isKnownBinaryExtension('movie.mp4')).toBe(true);
   });
 
   it('byte NUL trong 8000 byte đầu → nhị phân', () => {

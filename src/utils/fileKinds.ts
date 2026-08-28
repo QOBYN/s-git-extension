@@ -2,7 +2,7 @@
 
 import type { DiffPayload } from '../../shared/types';
 
-export type DiffViewKind = 'text' | 'image' | 'csv' | 'binary' | 'submodule';
+export type DiffViewKind = 'text' | 'image' | 'video' | 'csv' | 'binary' | 'submodule';
 
 const IMAGE_MIME: Record<string, string> = {
   '.png': 'image/png',
@@ -31,6 +31,10 @@ export function imageMimeOf(path: string): string | null {
 export function diffViewKind(path: string, diff: DiffPayload): DiffViewKind {
   if (diff.submodule !== undefined) {
     return 'submodule'; // gitlink — so sánh con trỏ, không có nội dung text
+  }
+  if (diff.media !== undefined) {
+    // Nội dung không đi qua RPC: video phát qua URI; binary/tooLarge → note.
+    return diff.media.kind === 'video' ? 'video' : 'binary';
   }
   const mime = imageMimeOf(path);
   if (mime !== null) {

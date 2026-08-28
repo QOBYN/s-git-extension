@@ -27,11 +27,41 @@ export interface WebviewInitial {
   filePath?: string | null;
 }
 
+/**
+ * Thư mục ngoài bundle mà webview được phép đọc (composition root đăng ký lúc
+ * activate — hiện là thư mục tạm media của MediaExporter).
+ */
+let extraResourceRoots: vscode.Uri[] = [];
+
+export function setExtraResourceRoots(roots: vscode.Uri[]): void {
+  extraResourceRoots = roots;
+}
+
+/**
+ * Webview đang sống — dùng để đổi fsPath → webview URI từ tầng service (không
+ * giữ tham chiếu webview trong hostFunctions). URI tài nguyên local là chung
+ * cho mọi webview trong 1 cửa sổ nên lấy webview nào cũng được.
+ */
+const liveWebviews = new Set<vscode.Webview>();
+
+/** null khi chưa có webview nào (thực tế không xảy ra: request đến từ webview). */
+export function toWebviewUri(fsPath: string): string | null {
+  for (const webview of liveWebviews) {
+    return webview.asWebviewUri(vscode.Uri.file(fsPath)).toString();
+  }
+  return null;
+}
+
 export function webviewOptions(context: vscode.ExtensionContext): vscode.WebviewOptions {
   return {
     enableScripts: true,
-    // Chặn webview đọc file ngoài bundle của chính nó (an toàn mặc định).
-    localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, WEBVIEW_DIST_DIR)],
+    // Chặn webview đọc file ngoài các gốc này (an toàn mặc định): bundle của
+    // chính nó + thư mục tạm media + workspace (video working tree đọc tại chỗ).
+    localResourceRoots: [
+      vscode.Uri.joinPath(context.extensionUri, WEBVIEW_DIST_DIR),
+      ...extraResourceRoots,
+      ...(vscode.workspace.workspaceFolders ?? []).map((f) => f.uri),
+    ],
   };
 }
 
@@ -57,9 +87,11 @@ export function attachWebview(
   });
   const rpc = bindHostRpc(webview, functions);
   const hubSub = hub.add(rpc.remote);
+  liveWebviews.add(webview);
   return {
     remote: rpc.remote,
     disposable: toDisposable(() => {
+      liveWebviews.delete(webview);
       hubSub.dispose();
       rpc.disposable.dispose();
     }),

@@ -1,6 +1,8 @@
 // Composition root — nơi DUY NHẤT khởi tạo và nối các service (architecture.md mục 1).
 // File này chỉ wire dependency + đăng ký lệnh/view; không chứa logic nghiệp vụ.
 
+import { mkdtempSync } from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { EXTENSION_ID_PREFIX } from '../shared/constants';
@@ -19,11 +21,13 @@ import { countChangedFiles } from './services/changeBadge';
 import { FeedbackService } from './services/feedbackService';
 import { GitService } from './services/gitService';
 import { SpawnGitRunner } from './services/gitRunner';
+import { MediaExporter } from './services/mediaExporter';
 import { RepoManager } from './services/repoManager';
 import { RepoStateReader } from './services/repoStateReader';
 import { FileLogPanel } from './views/fileLogPanel';
 import { MainPanel } from './views/mainPanel';
 import { SidebarViewProvider } from './views/sidebarView';
+import { setExtraResourceRoots, toWebviewUri } from './views/webviewHost';
 
 export function activate(context: vscode.ExtensionContext): void {
   const config = readExtensionConfig();
@@ -34,6 +38,15 @@ export function activate(context: vscode.ExtensionContext): void {
   const stateReader = new RepoStateReader(new NodeFileSystem());
   const repoManager = new RepoManager(new VscodeWorkspaceReader(), git, stateReader);
   const cache = new CacheIndex(new FileStorage(context.globalStorageUri.fsPath));
+  // Thư mục tạm RIÊNG của session cho blob video xuất ra (diff video đọc qua
+  // webview URI) — mkdtemp tránh 2 cửa sổ VSCode giẫm nhau; dispose xoá cả cụm.
+  const mediaExporter = new MediaExporter(
+    runner,
+    mkdtempSync(path.join(os.tmpdir(), 's-git-media-')),
+  );
+  context.subscriptions.push({ dispose: () => void mediaExporter.dispose() });
+  // Webview phải được phép đọc thư mục tạm này (localResourceRoots).
+  setExtraResourceRoots([vscode.Uri.file(mediaExporter.dir)]);
   const feedback = new FeedbackService({
     config: FEEDBACK_TARGET,
     api: new HttpTelegramApi(),
@@ -103,8 +116,11 @@ export function activate(context: vscode.ExtensionContext): void {
         await vscode.workspace.fs.delete(vscode.Uri.file(abs), { recursive: true, useTrash: true });
         return true;
       },
+      openExternal: (fsPath) => void vscode.env.openExternal(vscode.Uri.file(fsPath)),
     },
     feedback,
+    mediaExporter,
+    toWebviewUri,
   });
 
   const sidebar = new SidebarViewProvider(context, hostFunctions, hub);

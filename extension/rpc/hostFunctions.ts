@@ -6,16 +6,24 @@ import type {
   DiffPayload,
   DiffTarget,
   LogPage,
+  MediaDiffInfo,
   PanelMode,
   WorkingTreeStatus,
 } from '../../shared/types';
-import { hasBinaryContent, isKnownBinaryExtension } from '../services/binaryDetect';
+import {
+  extensionOf,
+  hasBinaryContent,
+  isKnownBinaryExtension,
+  isOpaqueBinaryExtension,
+  isVideoExtension,
+} from '../services/binaryDetect';
 import type { CacheIndex } from '../services/cacheIndex';
 import type { FeedbackService } from '../services/feedbackService';
 import type { GitService } from '../services/gitService';
+import type { MediaExporter } from '../services/mediaExporter';
 import type { RepoManager } from '../services/repoManager';
 import type { RepoStateReader } from '../services/repoStateReader';
-import { GitError, type GitRunner } from '../services/gitRunner';
+import { GitError, GitOutputLimitError, type GitRunner } from '../services/gitRunner';
 
 /** Cổng mở panel chính — composition root nối với MainPanel (tránh import vòng views). */
 export interface PanelOpener {
@@ -39,6 +47,8 @@ export interface ShellPort {
   renamePath(repoRoot: string, relPath: string, newName: string): Promise<void>;
   /** Hỏi xác nhận (modal VSCode) rồi chuyển vào Trash — false = user huỷ. */
   deletePath(repoRoot: string, relPath: string): Promise<boolean>;
+  /** Mở file bằng ứng dụng mặc định của HĐH (video player, PDF viewer…). */
+  openExternal(fsPath: string): void;
 }
 
 export interface HostFunctionDeps {
@@ -50,10 +60,25 @@ export interface HostFunctionDeps {
   panelOpener: PanelOpener;
   shell: ShellPort;
   feedback: FeedbackService;
+  /** Xuất blob video ra thư mục tạm để webview đọc trực tiếp (diff video). */
+  mediaExporter: MediaExporter;
+  /** Đổi fsPath → webview URI (impl ở views/webviewHost — cần 1 webview đang sống). */
+  toWebviewUri: (fsPath: string) => string | null;
 }
 
 export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
-  const { repoManager, git, stateReader, runner, cache, panelOpener, shell, feedback } = deps;
+  const {
+    repoManager,
+    git,
+    stateReader,
+    runner,
+    cache,
+    panelOpener,
+    shell,
+    feedback,
+    mediaExporter,
+    toWebviewUri,
+  } = deps;
 
   /**
    * Trang đầu của log đi qua cache (architecture.md mục 4): nếu headOid VÀ
@@ -117,6 +142,16 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
     },
 
     async getDiff(repoRoot, target): Promise<DiffPayload> {
+      // Video: không gửi nội dung qua RPC — cấp webview URI cho thẻ <video>
+      // đọc trực tiếp (file working tree, hoặc blob xuất ra thư mục tạm).
+      if (isVideoExtension(target.path)) {
+        return mediaDiff(repoRoot, target, 'video');
+      }
+      // Nhị phân "đục" (zip/pdf/mp3…): kiểu gì cũng chỉ hiện note kích thước —
+      // hỏi size là đủ, khỏi bơm nội dung (có thể hàng trăm MB) qua RPC.
+      if (isOpaqueBinaryExtension(target.path)) {
+        return mediaDiff(repoRoot, target, 'binary');
+      }
       // Đọc base64 thống nhất rồi mới quyết định text/binary — tránh đọc 2 lần.
       let originalB64: string;
       let modifiedB64: string;
@@ -126,6 +161,11 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
           readSide(repoRoot, target, 'modified'),
         ]);
       } catch (error) {
+        // File vượt giới hạn đọc (text/ảnh khổng lồ) — note "quá lớn" thay vì
+        // ném lỗi thô ra UI.
+        if (error instanceof GitOutputLimitError) {
+          return mediaDiff(repoRoot, target, 'tooLarge');
+        }
         // Path là SUBMODULE: entry trong index/tree là gitlink (commit SHA của
         // repo con, không phải blob) nên `git show :path` fail "bad object" —
         // trả view so sánh con trỏ thay vì diff nội dung.
@@ -195,6 +235,9 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
     },
     renamePath: (repoRoot, relPath, newName) => shell.renamePath(repoRoot, relPath, newName),
     deletePath: (repoRoot, relPath) => shell.deletePath(repoRoot, relPath),
+    async openPathExternal(fsPath) {
+      shell.openExternal(fsPath);
+    },
 
     stageHunk: (repoRoot, patch) => git.stageHunk(repoRoot, patch),
     unstageHunk: (repoRoot, patch) => git.unstageHunk(repoRoot, patch),
@@ -263,6 +306,82 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
   async function currentActivity(repoRoot: string) {
     const gitDir = await git.getGitDir(repoRoot);
     return (await stateReader.read(gitDir)).activity;
+  }
+
+  /**
+   * DiffPayload không mang nội dung (video / nhị phân đục / quá lớn) — chỉ
+   * kích thước 2 phía, và với video thêm webview URI + đường dẫn file trên đĩa.
+   */
+  async function mediaDiff(
+    repoRoot: string,
+    target: DiffTarget,
+    kind: MediaDiffInfo['kind'],
+  ): Promise<DiffPayload> {
+    // Chỉ video mới materialize blob ra đĩa (cần cho <video> phát); các kind
+    // khác chỉ hỏi size — không tốn IO xuất file mà user có thể chẳng cần.
+    const materialize = kind === 'video';
+    const ext = extensionOf(target.path);
+    const [original, modified] = await Promise.all([
+      sideMedia(repoRoot, target, 'original', ext, materialize),
+      sideMedia(repoRoot, target, 'modified', ext, materialize),
+    ]);
+    return {
+      original: '',
+      modified: '',
+      encoding: 'text',
+      media: {
+        kind,
+        originalUri: original.uri,
+        modifiedUri: modified.uri,
+        originalSize: original.size,
+        modifiedSize: modified.size,
+        originalFsPath: original.fsPath,
+        modifiedFsPath: modified.fsPath,
+      },
+    };
+  }
+
+  /**
+   * Thông tin 1 phía của media diff. Best-effort: phía không tồn tại
+   * (added/deleted) hoặc đang conflict trả toàn null — UI hiện "(no video)".
+   */
+  async function sideMedia(
+    repoRoot: string,
+    target: DiffTarget,
+    side: 'original' | 'modified',
+    ext: string,
+    materialize: boolean,
+  ): Promise<{ uri: string | null; size: number | null; fsPath: string | null }> {
+    const none = { uri: null, size: null, fsPath: null };
+    const spec = showSpec(target, side);
+    if (spec === null) {
+      // Phía working tree: file nằm sẵn trên đĩa, phục vụ tại chỗ.
+      const { stat } = await import('node:fs/promises');
+      const { join } = await import('node:path');
+      const fsPath = join(repoRoot, target.path);
+      try {
+        const info = await stat(fsPath);
+        return { uri: materialize ? toWebviewUri(fsPath) : null, size: info.size, fsPath };
+      } catch {
+        return none; // đã xoá khỏi working tree
+      }
+    }
+    try {
+      const size = Number.parseInt(
+        (await runner.run(repoRoot, ['cat-file', '-s', spec])).trim(),
+        10,
+      );
+      if (!materialize) {
+        return { uri: null, size, fsPath: null };
+      }
+      const fsPath = await mediaExporter.exportBlob(repoRoot, spec, ext);
+      return { uri: toWebviewUri(fsPath), size, fsPath };
+    } catch (error) {
+      if (error instanceof GitError) {
+        return none; // path không có ở revision này / gitlink / conflict
+      }
+      throw error;
+    }
   }
 
   /**
