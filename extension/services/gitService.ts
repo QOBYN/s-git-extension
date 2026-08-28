@@ -177,6 +177,11 @@ export class GitService {
       '--name-status',
       '-z',
       '-M',
+      // Merge commit: mặc định git show in combined diff (chỉ file khác CẢ 2
+      // parent) nên merge sạch trả rỗng. So với parent 1 để khớp readSide
+      // (`oid^:path`) bên diff nội dung.
+      '-m',
+      '--first-parent',
       oid,
     ]);
     return parseCommitFiles(out);
