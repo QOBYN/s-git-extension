@@ -4,7 +4,7 @@
   "execution": "trusted-worker",
   "id": "s-git",
   "name": "S-Git",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Git client panel: multi-branch commit graph, hunk staging, side-by-side diff, merge/rebase and file log. Follows the focused workspace.",
   "author": {
     "name": "QOBYN",
