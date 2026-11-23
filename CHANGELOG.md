@@ -8,6 +8,8 @@ dùng đọc — mô tả thay đổi nhìn thấy được, không phải tên 
 
 ## [Unreleased]
 
+## [0.0.7] - 2026-11-23
+
 ### Added
 
 - Chạy được như **plugin của [Orca](https://orca.dev)**: panel S-Git ở sidebar phải với đủ
