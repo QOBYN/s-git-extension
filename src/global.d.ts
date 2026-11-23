@@ -20,6 +20,8 @@ interface Window {
     readonly plugin: import('./orcaBridge').OrcaFramePlugin;
     readonly locale?: string;
     on?(event: string, handler: (payload: unknown) => void): { dispose(): void };
+    /** Chỉ có trong custom editor (view giữa): tài liệu .sgit đang mở. */
+    readonly document?: { get(): Promise<unknown> };
   };
 }
 

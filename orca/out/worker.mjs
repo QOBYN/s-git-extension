@@ -1988,7 +1988,16 @@ function toWireError(error) {
 }
 
 // orca/worker/rpcServer.ts
+var SLOW_CALL_MS = 1500;
 var PENDING_TTL_MS = 2 * 6e4;
+function toJsonValue(value) {
+  try {
+    const json = JSON.stringify(value);
+    return json === void 0 ? null : JSON.parse(json);
+  } catch {
+    return { message: String(value) };
+  }
+}
 function createRpcServer(functions, options = {}) {
   const now = options.now ?? Date.now;
   let counter = 0;
@@ -2026,14 +2035,20 @@ function createRpcServer(functions, options = {}) {
         return { ok: false, error: { message: `Unknown host method: ${String(input?.method)}` } };
       }
       let value;
+      const startedAt = now();
       try {
         value = await fn.apply(functions, takeArgs(input));
       } catch (error) {
-        return { ok: false, error: toWireError(error) };
+        return { ok: false, error: toJsonValue(toWireError(error)) };
+      } finally {
+        const elapsed = now() - startedAt;
+        if (elapsed >= SLOW_CALL_MS) {
+          options.onSlow?.(String(input.method), elapsed);
+        }
       }
       const json = JSON.stringify(value ?? null);
       if (Buffer.byteLength(json, "utf8") <= INLINE_RESULT_MAX_BYTES) {
-        return { ok: true, value: value ?? null };
+        return { ok: true, value: JSON.parse(json) };
       }
       const id = newId();
       const parts = splitChunks(json, DOWNLOAD_CHUNK_UNITS);
@@ -2391,6 +2406,8 @@ var NodeRepoWatcher = class extends DisposableStore {
 };
 
 // orca/worker/main.ts
+var SYNC_RETRY_BASE_MS = 2e3;
+var SYNC_MAX_RETRIES = 6;
 var STATUS_ITEM_ID = "changes";
 var app = null;
 async function activate(orca) {
@@ -2444,7 +2461,9 @@ var SgitOrcaApp = class extends DisposableStore {
       // Frame Orca chỉ tải được file trong thư mục plugin — không có URI cho file tạm.
       toWebviewUri: () => null
     });
-    const server = createRpcServer(hostFunctions);
+    const server = createRpcServer(hostFunctions, {
+      onSlow: (method, ms) => log(`slow ${method}: ${ms} ms`)
+    });
     this.register(orca.panels.handle(ORCA_REQUEST.call, (input) => server.call(input)));
     this.register(orca.panels.handle(ORCA_REQUEST.upload, (input) => server.upload(input)));
     this.register(orca.panels.handle(ORCA_REQUEST.chunk, (input) => server.chunk(input)));
@@ -2459,6 +2478,8 @@ var SgitOrcaApp = class extends DisposableStore {
   watcher = null;
   /** Đồng bộ workspace chạy nối đuôi — sự kiện dồn dập không chạy chồng lên nhau. */
   syncChain = Promise.resolve();
+  /** Số lần đồng bộ hỏng liên tiếp — giãn thời gian thử lại. */
+  syncFailures = 0;
   /** Trạng thái đã đồng bộ lần trước — chỉ báo panel khi thật sự đổi. */
   last = null;
   /** Repo thuộc workspace đang focus — nguồn số đếm trên status bar. */
@@ -2483,15 +2504,22 @@ var SgitOrcaApp = class extends DisposableStore {
   }
   notify(name, ...args) {
     try {
-      this.orca.panels.post(ORCA_NOTIFY_EVENT, { name, args });
+      this.orca.panels.post(ORCA_NOTIFY_EVENT, toJsonValue({ name, args }));
     } catch (error) {
       this.orca.log(`post ${name}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   queueSync() {
-    this.syncChain = this.syncChain.then(() => this.sync()).catch(
-      (error) => this.orca.log(`sync: ${error instanceof Error ? error.message : String(error)}`)
-    );
+    this.syncChain = this.syncChain.then(() => this.sync()).then(() => {
+      this.syncFailures = 0;
+    }).catch((error) => {
+      this.orca.log(`sync: ${error instanceof Error ? error.message : String(error)}`);
+      if (!this.disposed && this.syncFailures < SYNC_MAX_RETRIES) {
+        const delay = SYNC_RETRY_BASE_MS * 2 ** this.syncFailures++;
+        const timer = setTimeout(() => this.queueSync(), delay);
+        this.register(toDisposable(() => clearTimeout(timer)));
+      }
+    });
   }
   /** Đọc lại workspace của Orca → dựng lại watcher, báo panel khi repo/focus đổi. */
   async sync() {

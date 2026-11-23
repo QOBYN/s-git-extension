@@ -21,10 +21,14 @@ import { RepoManager } from '../../extension/services/repoManager';
 import { RepoStateReader } from '../../extension/services/repoStateReader';
 import { cacheDir, readSettings, type OrcaSettings } from './config';
 import type { OrcaFocusContext, OrcaWorkerApi, OrcaWorkspace } from './orcaApi';
-import { createRpcServer } from './rpcServer';
+import { createRpcServer, toJsonValue } from './rpcServer';
 import { createOrcaShell } from './shell';
 import { NodeRepoWatcher } from './watchers';
 import { OrcaWorkspaces } from './workspaces';
+
+/** Thử lại đồng bộ workspace khi lỗi: 2s, 4s, 8s… tối đa 6 lần. */
+const SYNC_RETRY_BASE_MS = 2_000;
+const SYNC_MAX_RETRIES = 6;
 
 /** Id status bar item — khớp `contributes.statusBarItems[].id` trong orca-plugin.json. */
 const STATUS_ITEM_ID = 'changes';
@@ -55,6 +59,8 @@ class SgitOrcaApp extends DisposableStore {
   private watcher: NodeRepoWatcher | null = null;
   /** Đồng bộ workspace chạy nối đuôi — sự kiện dồn dập không chạy chồng lên nhau. */
   private syncChain: Promise<void> = Promise.resolve();
+  /** Số lần đồng bộ hỏng liên tiếp — giãn thời gian thử lại. */
+  private syncFailures = 0;
   /** Trạng thái đã đồng bộ lần trước — chỉ báo panel khi thật sự đổi. */
   private last: { repoKey: string; focusId: string | null } | null = null;
   /** Repo thuộc workspace đang focus — nguồn số đếm trên status bar. */
@@ -106,7 +112,9 @@ class SgitOrcaApp extends DisposableStore {
       toWebviewUri: () => null,
     });
 
-    const server = createRpcServer(hostFunctions);
+    const server = createRpcServer(hostFunctions, {
+      onSlow: (method, ms) => log(`slow ${method}: ${ms} ms`),
+    });
     this.register(orca.panels.handle(ORCA_REQUEST.call, (input) => server.call(input)));
     this.register(orca.panels.handle(ORCA_REQUEST.upload, (input) => server.upload(input)));
     this.register(orca.panels.handle(ORCA_REQUEST.chunk, (input) => server.chunk(input)));
@@ -134,7 +142,8 @@ class SgitOrcaApp extends DisposableStore {
 
   private notify<N extends NotifyName>(name: N, ...args: Parameters<WebviewFunctions[N]>): void {
     try {
-      this.orca.panels.post(ORCA_NOTIFY_EVENT, { name, args });
+      // Payload phải là JSON thuần (Orca kiểm) — tham số tuỳ chọn hay là undefined.
+      this.orca.panels.post(ORCA_NOTIFY_EVENT, toJsonValue({ name, args }));
     } catch (error) {
       this.orca.log(`post ${name}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -143,9 +152,19 @@ class SgitOrcaApp extends DisposableStore {
   private queueSync(): void {
     this.syncChain = this.syncChain
       .then(() => this.sync())
-      .catch((error: unknown) =>
-        this.orca.log(`sync: ${error instanceof Error ? error.message : String(error)}`),
-      );
+      .then(() => {
+        this.syncFailures = 0;
+      })
+      .catch((error: unknown) => {
+        this.orca.log(`sync: ${error instanceof Error ? error.message : String(error)}`);
+        // Lỗi thoáng qua (plugin đang reload, Orca chưa sẵn sàng) — không có sự
+        // kiện nào tới thì watcher sẽ không bao giờ được dựng → tự thử lại, giãn dần.
+        if (!this.disposed && this.syncFailures < SYNC_MAX_RETRIES) {
+          const delay = SYNC_RETRY_BASE_MS * 2 ** this.syncFailures++;
+          const timer = setTimeout(() => this.queueSync(), delay);
+          this.register(toDisposable(() => clearTimeout(timer)));
+        }
+      });
   }
 
   /** Đọc lại workspace của Orca → dựng lại watcher, báo panel khi repo/focus đổi. */

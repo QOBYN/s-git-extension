@@ -29,10 +29,35 @@
         "ui": "html"
       }
     ],
+    "customEditors": [
+      {
+        "id": "s-git",
+        "title": "S-Git",
+        "extensions": [
+          ".sgit"
+        ],
+        "entry": "orca/out/panel/editor.html",
+        "priority": "default",
+        "frame": "isolated"
+      }
+    ],
+    "newFiles": [
+      {
+        "id": "s-git",
+        "title": "S-Git",
+        "extension": ".sgit"
+      }
+    ],
     "events": [
-      { "on": "workspace.changed" },
-      { "on": "workspace.created" },
-      { "on": "workspace.removed" }
+      {
+        "on": "workspace.changed"
+      },
+      {
+        "on": "workspace.created"
+      },
+      {
+        "on": "workspace.removed"
+      }
     ],
     "statusBarItems": [
       {
@@ -72,8 +97,14 @@
     ]
   },
   "capabilities": [
-    { "kind": "workspace:read" },
-    { "kind": "workspace:write" },
-    { "kind": "settings:own" }
+    {
+      "kind": "workspace:read"
+    },
+    {
+      "kind": "workspace:write"
+    },
+    {
+      "kind": "settings:own"
+    }
   ]
 }

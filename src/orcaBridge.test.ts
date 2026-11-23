@@ -45,6 +45,19 @@ describe('createOrcaHost', () => {
     });
   });
 
+  it('input JSON thuần: bỏ undefined ở cuối, field undefined bị loại, undefined giữa → null', async () => {
+    const { plugin, requests } = fakePlugin(() => ({ ok: true, value: null }) satisfies CallOutput);
+    const host = createOrcaHost(plugin, recordingLocal().local);
+    await host.getLog('/r', { skip: 0, ref: undefined, path: undefined });
+    await host.getStatus('/r', undefined);
+    await host.checkout('/r', undefined as unknown as string, { force: true });
+    expect(requests.map((r) => r.input)).toEqual([
+      { method: 'getLog', args: ['/r', { skip: 0 }] },
+      { method: 'getStatus', args: ['/r'] },
+      { method: 'checkout', args: ['/r', null, { force: true }] },
+    ]);
+  });
+
   it('lỗi worker → reject với object lỗi nguyên dạng', async () => {
     const error = { message: 'git failed', git: { command: 'x', code: 1, stderr: 'e' } };
     const { plugin } = fakePlugin(() => ({ ok: false, error }) satisfies CallOutput);

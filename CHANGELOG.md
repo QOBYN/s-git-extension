@@ -13,6 +13,8 @@ dùng đọc — mô tả thay đổi nhìn thấy được, không phải tên 
 - Chạy được như **plugin của [Orca](https://orca.dev)**: panel S-Git ở sidebar phải với đủ
   History / Working Tree / diff / merge / file log; tự chuyển theo workspace đang mở trong Orca;
   nút bật/tắt cây thư mục + nhánh ngay trong panel; status bar Orca hiện số file thay đổi
+- Orca: mở S-Git thành **tab ở vùng editor giữa** (nút **+** trên thanh tab → **S-Git**) — rộng
+  hơn panel sidebar phải, hợp với graph nhiều nhánh và diff cạnh nhau
 
 ### Removed
 

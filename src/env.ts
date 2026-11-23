@@ -3,3 +3,10 @@
 // 1 bundle UI, 2 nơi chạy — chỉ vài chỗ khác hành vi đọc cờ này.
 
 export const IS_ORCA = typeof window !== 'undefined' && window.orca != null;
+
+/**
+ * Orca: đang là VIEW GIỮA (custom editor mở file .sgit — orca/panel/editor.html)
+ * chứ không phải panel ở sidebar phải. Rộng hơn nhiều nên bố cục mặc định khác.
+ */
+export const IS_ORCA_EDITOR =
+  IS_ORCA && typeof document !== 'undefined' && document.documentElement.dataset.sgSurface === 'editor';

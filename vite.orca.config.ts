@@ -2,8 +2,8 @@ import react from '@vitejs/plugin-react-swc';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 
-// Build PANEL của plugin Orca: cùng UI React với webview VSCode (src/), entry
-// HTML riêng ở orca/panel/ → orca/out/panel/ (orca-plugin.json trỏ vào đây).
+// Build UI của plugin Orca: cùng UI React với webview VSCode (src/), 2 entry HTML
+// ở orca/panel/ (index = panel sidebar phải, editor = view giữa) → orca/out/panel/.
 // Không dùng plugin vscode() — panel Orca nói chuyện với worker qua window.orca
 // (src/orcaBridge.ts). Worker build bằng esbuild trong scripts/build-orca.mjs.
 
@@ -56,5 +56,12 @@ export default defineConfig({
     // Bundle Monaco vài MB là bình thường — chỉ cần dưới trần 50 MiB/plugin.
     chunkSizeWarningLimit: 8000,
     reportCompressedSize: false,
+    rollupOptions: {
+      // 2 trang, chung 1 bundle: panel sidebar phải + view giữa (custom editor .sgit).
+      input: {
+        index: `${rootDir}orca/panel/index.html`,
+        editor: `${rootDir}orca/panel/editor.html`,
+      },
+    },
   },
 });

@@ -2,7 +2,7 @@
 
 <https://polyformproject.org/licenses/shield/1.0.0>
 
-Required Notice: Copyright (c) 2026 TODO_COPYRIGHT_HOLDER
+Required Notice: Copyright (c) 2026 QOBYN (https://github.com/QOBYN)
 
 ## Acceptance
 

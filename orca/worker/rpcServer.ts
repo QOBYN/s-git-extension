@@ -15,6 +15,8 @@ import {
 } from '../../shared/orcaWire';
 import { toWireError } from '../../extension/rpc/wireError';
 
+const SLOW_CALL_MS = 1_500;
+
 /** Mảnh không được lấy/hoàn tất sau khoảng này thì bỏ — panel đã đóng hoặc bỏ cuộc. */
 const PENDING_TTL_MS = 2 * 60_000;
 
@@ -29,9 +31,24 @@ export interface RpcServer {
   chunk(input: unknown): { data: string };
 }
 
+/** Bản JSON thuần của 1 giá trị (bỏ field undefined, Date → chuỗi…); không serialize được → chuỗi. */
+export function toJsonValue(value: unknown): unknown {
+  try {
+    const json = JSON.stringify(value);
+    return json === undefined ? null : (JSON.parse(json) as unknown);
+  } catch {
+    return { message: String(value) };
+  }
+}
+
 export function createRpcServer(
   functions: HostFunctions,
-  options: { now?: () => number; newId?: () => string } = {},
+  options: {
+    now?: () => number;
+    newId?: () => string;
+    /** Lệnh chạy lâu hơn SLOW_CALL_MS — ghi `orca plugin logs` để chẩn đoán. */
+    onSlow?: (method: string, ms: number) => void;
+  } = {},
 ): RpcServer {
   const now = options.now ?? Date.now;
   let counter = 0;
@@ -73,15 +90,23 @@ export function createRpcServer(
         return { ok: false, error: { message: `Unknown host method: ${String(input?.method)}` } };
       }
       let value: unknown;
+      const startedAt = now();
       try {
         value = await (fn as (...args: unknown[]) => unknown).apply(functions, takeArgs(input));
       } catch (error) {
-        return { ok: false, error: toWireError(error) };
+        return { ok: false, error: toJsonValue(toWireError(error)) };
+      } finally {
+        const elapsed = now() - startedAt;
+        if (elapsed >= SLOW_CALL_MS) {
+          options.onSlow?.(String(input.method), elapsed);
+        }
       }
       // undefined không đi qua JSON — Promise<void> trả null cho chắc.
       const json = JSON.stringify(value ?? null);
       if (Buffer.byteLength(json, 'utf8') <= INLINE_RESULT_MAX_BYTES) {
-        return { ok: true, value: value ?? null };
+        // Orca từ chối answer không phải JSON thuần (field undefined, Date…) —
+        // birpc/VSCode thì tự bỏ qua. Trả đúng bản JSON đã serialize.
+        return { ok: true, value: JSON.parse(json) as unknown };
       }
       const id = newId();
       const parts = splitChunks(json, DOWNLOAD_CHUNK_UNITS);

@@ -54,9 +54,16 @@ export function createOrcaHost(plugin: OrcaFramePlugin, local: WebviewFunctions)
 
   let uploadSeq = 0;
 
-  async function call(method: HostMethod, args: unknown[]): Promise<unknown> {
+  async function call(method: HostMethod, rawArgs: unknown[]): Promise<unknown> {
+    // Input của Orca phải là JSON thuần. Bỏ undefined ở CUỐI để tham số tuỳ chọn
+    // phía worker nhận undefined (default param còn tác dụng) thay vì null;
+    // undefined ở giữa → null, field undefined trong object bị bỏ — như JSON.
+    const args = [...rawArgs];
+    while (args.length > 0 && args[args.length - 1] === undefined) {
+      args.pop();
+    }
     const json = JSON.stringify(args);
-    let input: CallInput = { method, args };
+    let input: CallInput = { method, args: JSON.parse(json) as unknown[] };
     if (json.length > INLINE_ARGS_MAX_UNITS) {
       // Tham số lớn (vd nội dung file sửa trong diff) vượt trần 64 KiB/request.
       const id = `u${Date.now().toString(36)}-${(uploadSeq++).toString(36)}`;

@@ -1,17 +1,19 @@
-// Bố cục khi chạy làm panel plugin Orca. VSCode có 2 webview riêng (sidebar
-// Activity Bar + panel editor); Orca chỉ cho 1 panel ở sidebar phải, mỗi lúc
-// hiện 1 panel → gộp: [cây sidebar (bật/tắt bằng nút ☰)] | [panel chính].
+// Bố cục khi chạy trong Orca — panel sidebar phải HOẶC view giữa (custom editor
+// .sgit), cùng 1 màn. VSCode có 2 webview riêng (sidebar Activity Bar + panel
+// editor); ở Orca gộp: [cây sidebar (bật/tắt bằng nút đầu toolbar)] | [panel chính].
 // Hai màn dùng CHUNG 1 store (cùng document) — store.sidebarLoaded lo phần
 // refresh cây, click trong cây điều hướng tại chỗ (src/orcaBridge LOCAL_METHODS).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Splitter } from '../components/Splitter';
+import { IS_ORCA_EDITOR } from '../env';
 import { useRepoStore } from '../store/repoStore';
 import { MainScreen } from './MainScreen';
 import { SidebarScreen } from './SidebarScreen';
 
-const OPEN_KEY = 's-git.orca.sidebarOpen';
-const WIDTH_KEY = 's-git.orca.sidebarWidth';
+// Panel sidebar phải và view giữa nhớ riêng (cùng origin nên chung localStorage).
+const OPEN_KEY = IS_ORCA_EDITOR ? 's-git.orca.editor.sidebarOpen' : 's-git.orca.sidebarOpen';
+const WIDTH_KEY = IS_ORCA_EDITOR ? 's-git.orca.editor.sidebarWidth' : 's-git.orca.sidebarWidth';
 const WIDTH_LIMITS = { min: 160, max: 520, initial: 240 };
 /**
  * Panel hẹp hơn mức này (sidebar phải của Orca thường chỉ ~400–600px) thì cây
@@ -40,8 +42,11 @@ function clampWidth(width: number): number {
 }
 
 export function OrcaScreen() {
-  // Mặc định đóng: sidebar phải của Orca hẹp, ưu tiên chỗ cho graph/diff.
-  const [open, setOpen] = useState(() => readStored(OPEN_KEY) === '1');
+  // Mặc định: view giữa rộng → mở cây; panel sidebar phải hẹp → đóng, nhường chỗ graph/diff.
+  const [open, setOpen] = useState(() => {
+    const stored = readStored(OPEN_KEY);
+    return stored === null ? IS_ORCA_EDITOR : stored === '1';
+  });
   const [width, setWidth] = useState(() => {
     const stored = Number(readStored(WIDTH_KEY));
     return Number.isFinite(stored) && stored > 0 ? clampWidth(stored) : WIDTH_LIMITS.initial;

@@ -128,3 +128,59 @@ describe('createRpcServer.upload', () => {
     expect(out.ok).toBe(false);
   });
 });
+
+describe('JSON thuần (Orca từ chối giá trị không phải JSON)', () => {
+  it('kết quả có field undefined / Date → trả bản đã qua JSON', async () => {
+    const server = createRpcServer(
+      fakeFunctions({
+        getLog: async () => ({ commits: [{ oid: 'a', refs: undefined }], at: new Date(0) }),
+      }),
+    );
+    const out = await server.call({ method: 'getLog', args: [] });
+    expect(out).toEqual({ ok: true, value: { commits: [{ oid: 'a' }], at: '1970-01-01T00:00:00.000Z' } });
+    expect(Object.keys((out as { value: { commits: object[] } }).value.commits[0])).toEqual(['oid']);
+  });
+
+  it('lỗi ném ra giá trị lạ vẫn thành JSON', async () => {
+    const server = createRpcServer(
+      fakeFunctions({
+        fetch: async () => {
+          throw { message: 'x', extra: undefined };
+        },
+      }),
+    );
+    expect(await server.call({ method: 'fetch', args: [] })).toEqual({
+      ok: false,
+      error: { message: 'x' },
+    });
+  });
+});
+
+describe('onSlow', () => {
+  it('báo lệnh chạy lâu (kể cả khi lỗi), bỏ qua lệnh nhanh', async () => {
+    let t = 0;
+    const slow: Array<[string, number]> = [];
+    const server = createRpcServer(
+      fakeFunctions({
+        fetch: async () => {
+          t += 5_000;
+        },
+        push: async () => {
+          t += 6_000;
+          throw new Error('x');
+        },
+        stage: async () => {
+          t += 10;
+        },
+      }),
+      { now: () => t, onSlow: (method, ms) => slow.push([method, ms]) },
+    );
+    await server.call({ method: 'fetch', args: [] });
+    await server.call({ method: 'push', args: [] });
+    await server.call({ method: 'stage', args: [] });
+    expect(slow).toEqual([
+      ['fetch', 5_000],
+      ['push', 6_000],
+    ]);
+  });
+});
