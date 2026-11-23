@@ -30,7 +30,7 @@ import { OrcaWorkspaces } from './workspaces';
 const SYNC_RETRY_BASE_MS = 2_000;
 const SYNC_MAX_RETRIES = 6;
 
-/** Id status bar item — khớp `contributes.statusBarItems[].id` trong orca-plugin.json. */
+/** Id status bar item — khớp `contributes.statusBarItems[].id` trong orca/plugin/orca-plugin.json. */
 const STATUS_ITEM_ID = 'changes';
 
 let app: SgitOrcaApp | null = null;

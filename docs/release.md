@@ -33,17 +33,19 @@ Secrets khai ở repo **Settings → Secrets and variables → Actions**:
 
 ## Plugin Orca
 
-Orca cài plugin thẳng từ commit của tag `vX.Y.Z` (không chạy build), nên bản build
-`orca/out/` phải nằm trong chính commit đó. `npm version` (gọi bởi `npm run release:*`)
-tự chạy script `version`: `npm run build:orca` → đồng bộ `version` của
-[`orca-plugin.json`](../orca-plugin.json) theo `package.json` → `git add` vào commit bump.
+Gói Orca nằm ở [`orca/plugin/`](../orca/plugin/) (chỉ manifest + bản build + icon + LICENSE),
+khai báo bằng [`orca-catalog.json`](../orca-catalog.json) ở gốc repo (`source.path`) — nhờ vậy
+source, docs, `.claude/`… không bị tính vào plugin. Orca cài thẳng từ commit nên bản build phải
+nằm trong repo. `npm run release:*` lo hết:
 
-Lần đầu đưa lên danh mục plugin của Orca (chỉ làm 1 lần):
+1. `version` — `npm run build:orca` (build vào `orca/plugin/`, đồng bộ `version` của manifest)
+   → `git add orca/plugin` vào commit bump (C1).
+2. `postversion` — [`scripts/orca-catalog-release.mjs`](../scripts/orca-catalog-release.mjs):
+   lấy release entry của C1 bằng `orca plugin release-entry orca/plugin --json` (cần Orca cài
+   trên máy, hoặc đặt `ORCA_CLI`), ghi vào `orca-catalog.json`, commit (C2), dời tag sang C2.
+3. `git push --follow-tags`.
 
-```bash
-gh repo edit QOBYN/s-git-extension --add-topic orca-plugin
-```
-
-Sau đó mỗi tag `vX.Y.Z` mới được Orca tự quét (~1 giờ). Kiểm tra trạng thái ở
-<https://orca.dev/plugins/qobyn/s-git-extension>. Trước khi tag nên chạy
-`orca plugin validate .` (cần Orca ≥ 1.4.248) để bắt lỗi manifest sớm.
+Danh mục Orca quét tag mới (~30 phút/lần). Trạng thái:
+<https://orca.dev/plugins/qobyn/s-git-extension> — hoặc mục `qobyn/s-git-extension` trong
+[`status.json`](https://github.com/stablyai/orca-community-plugins/blob/main/status.json).
+Kiểm tra trước khi tag: `orca plugin validate orca/plugin`.

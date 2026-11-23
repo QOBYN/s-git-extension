@@ -46,7 +46,7 @@ S-Git cũng chạy như một plugin của [Orca](https://orca.dev) (cần Orca 
 **S-Git** ở sidebar phải, cùng UI và cùng engine git với bản VS Code.
 
 - **Cài**: Orca → Settings → Plugins → tìm `S-Git`, hoặc
-  `orca plugin install QOBYN/s-git-extension`. Plugin chạy `git` trên máy bạn nên Orca hỏi
+  `orca plugin install https://github.com/QOBYN/s-git-extension/tree/main/orca/plugin`. Plugin chạy `git` trên máy bạn nên Orca hỏi
   quyền trước khi bật (đọc danh sách workspace, mở file trong editor, lưu settings).
 - **Theo workspace đang mở**: đổi workspace ở sidebar trái của Orca thì S-Git chuyển sang repo
   của workspace đó; dropdown repo liệt kê mọi workspace local (bỏ qua workspace SSH).
@@ -80,13 +80,14 @@ npm run dev        # vite + HMR cho webview
 
 npm run verify     # typecheck + test + build (VS Code + Orca)
 npm run package    # tạo s-git.vsix
-npm run build:orca # build plugin Orca vào orca/out/ (được commit — Orca cài thẳng từ git)
+npm run build:orca # build plugin Orca vào orca/plugin/ (được commit — Orca cài thẳng từ git)
 ```
 
-Plugin Orca: manifest [`orca-plugin.json`](orca-plugin.json), worker Node ở
-[`orca/worker/`](orca/worker/) (dùng lại services của `extension/`), panel chính là
-webview `src/` build với entry [`orca/panel/index.html`](orca/panel/index.html). Chạy thử:
-`orca plugin dev watch .` ở thư mục gốc repo.
+Plugin Orca: thư mục [`orca/plugin/`](orca/plugin/) là **toàn bộ** gói Orca cài (manifest +
+bản build + icon + LICENSE), khai báo qua [`orca-catalog.json`](orca-catalog.json) ở gốc repo.
+Source: worker Node ở [`orca/worker/`](orca/worker/) (dùng lại services của `extension/`), UI là
+webview `src/` build với entry [`orca/panel/`](orca/panel/). Chạy thử:
+`orca plugin dev watch orca/plugin`.
 
 Quy trình đóng gói và úp lên Marketplace: [`docs/release.md`](docs/release.md).
 

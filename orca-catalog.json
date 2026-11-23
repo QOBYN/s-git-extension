@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stablyai/orca/main/docs/schemas/plugins/orca-catalog.v2.schema.json",
+  "catalogVersion": 2,
+  "name": "S-Git",
+  "owner": "qobyn",
+  "plugins": [
+    {
+      "id": "qobyn.s-git",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/QOBYN/s-git-extension.git",
+        "ref": "main",
+        "path": "orca/plugin"
+      },
+      "description": "Git client: multi-branch commit graph, hunk staging, side-by-side diff, merge/rebase and file log. Follows the focused workspace.",
+      "categories": ["git"],
+      "releases": []
+    }
+  ]
+}

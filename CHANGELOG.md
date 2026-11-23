@@ -8,6 +8,14 @@ dùng đọc — mô tả thay đổi nhìn thấy được, không phải tên 
 
 ## [Unreleased]
 
+### Changed
+
+- Gói nhẹ hơn nhiều: bộ xem diff chỉ nạp phần cần của Monaco (bỏ gợi ý code, language
+  service TypeScript/CSS/HTML/JSON…) — webview VS Code 14 MB → 3,8 MB, plugin Orca 7,6 MB → 3,9 MB
+- Tô màu cú pháp giữ 48 ngôn ngữ phổ biến; ngôn ngữ hiếm (ABAP, Apex, MIPS, Q#…) vẫn diff được
+  nhưng hiện chữ trơn
+- Orca: plugin tách vào thư mục riêng `orca/plugin` — chỉ gồm bản build, không kèm source/tài liệu
+
 ## [0.0.7] - 2026-11-23
 
 ### Added

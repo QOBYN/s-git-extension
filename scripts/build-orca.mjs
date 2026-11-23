@@ -1,14 +1,17 @@
-// Build plugin Orca vào orca/out/ (thư mục này ĐƯỢC commit: Orca cài plugin
-// thẳng từ commit của tag vX.Y.Z, không chạy build):
-//   1. panel  — vite (vite.orca.config.ts) → orca/out/panel/
-//   2. worker — esbuild bundle orca/worker/main.ts → orca/out/worker.mjs (Node ESM)
-//   3. đồng bộ "version" của orca-plugin.json theo package.json
+// Build plugin Orca vào orca/plugin/ — thư mục này là TOÀN BỘ plugin Orca cài
+// (orca-catalog.json → source.path) và ĐƯỢC commit: Orca cài từ commit, không build.
+//   1. panel  — vite (vite.orca.config.ts) → orca/plugin/panel/
+//   2. worker — esbuild bundle orca/worker/main.ts → orca/plugin/worker.mjs (Node ESM)
+//   3. chép icon + LICENSE vào plugin; đồng bộ "version" của manifest theo package.json
 // Chạy: npm run build:orca (tự chạy trong `npm version` — xem package.json).
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { copyFile, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
 import { build as viteBuild } from 'vite';
+
+const PLUGIN_DIR = 'orca/plugin';
+const MANIFEST = `${PLUGIN_DIR}/orca-plugin.json`;
 
 process.chdir(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -16,7 +19,7 @@ await viteBuild({ configFile: 'vite.orca.config.ts', logLevel: 'warn' });
 
 await esbuild.build({
   entryPoints: ['orca/worker/main.ts'],
-  outfile: 'orca/out/worker.mjs',
+  outfile: `${PLUGIN_DIR}/worker.mjs`,
   bundle: true,
   platform: 'node',
   format: 'esm',
@@ -28,12 +31,16 @@ await esbuild.build({
   logLevel: 'warning',
 });
 
+// Plugin chỉ thấy file trong thư mục của nó — icon (manifest "icon") và giấy
+// phép (PolyForm buộc bản phân phối kèm nguyên văn điều khoản) phải chép vào.
+await copyFile('media/icon.png', `${PLUGIN_DIR}/icon.png`);
+await copyFile('LICENSE.md', `${PLUGIN_DIR}/LICENSE.md`);
+
 const pkg = JSON.parse(await readFile('package.json', 'utf8'));
-const manifestText = await readFile('orca-plugin.json', 'utf8');
-const manifest = JSON.parse(manifestText);
+const manifest = JSON.parse(await readFile(MANIFEST, 'utf8'));
 if (manifest.version !== pkg.version) {
   manifest.version = pkg.version;
-  await writeFile('orca-plugin.json', `${JSON.stringify(manifest, null, 2)}\n`);
-  console.log(`orca-plugin.json version → ${pkg.version}`);
+  await writeFile(MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`);
+  console.log(`${MANIFEST} version → ${pkg.version}`);
 }
-console.log('Orca plugin built → orca/out/');
+console.log(`Orca plugin built → ${PLUGIN_DIR}/`);

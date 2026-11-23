@@ -12,9 +12,9 @@ shared/**
 scripts/**
 index.html
 
-# ---- plugin Orca: gói riêng (orca-plugin.json), không thuộc .vsix ----
+# ---- plugin Orca: gói riêng (orca/plugin + orca-catalog.json), không thuộc .vsix ----
 orca/**
-orca-plugin.json
+orca-catalog.json
 .orca/**
 vite.orca.config.ts
 

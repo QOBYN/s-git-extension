@@ -2,7 +2,7 @@
 // hiện tại rồi ép độ đậm tối thiểu: nhiều theme để alpha quá nhạt, vùng thay đổi
 // nhìn không rõ (yêu cầu user: "hiển thị màu để rõ phần change").
 
-import * as monaco from 'monaco-editor';
+import * as monaco from 'monaco-editor/editor'; // API lõi — không kéo bản đầy đủ (xem setup.ts)
 import { parseCssColor, type Rgba } from '../utils/cssColor';
 
 /** Alpha tối thiểu — dưới ngưỡng này vùng đổi bị chìm vào nền. */

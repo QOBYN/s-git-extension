@@ -34,7 +34,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Plugin Orca (orca/out/) — chỉ kiểm build được; bản commit được tạo lúc `npm version`.
+      # Plugin Orca (orca/plugin/) — chỉ kiểm build được; bản commit được tạo lúc `npm version`.
       - name: Build Orca plugin
         run: npm run build:orca
 

@@ -1,4 +1,4 @@
-// Settings của plugin Orca (contributes.settings trong orca-plugin.json) +
+// Settings của plugin Orca (contributes.settings trong orca/plugin/orca-plugin.json) +
 // thư mục cache — tương đương extension/adapters/config.ts của VSCode.
 
 import * as os from 'node:os';
@@ -13,7 +13,7 @@ export interface OrcaSettings {
   gitWatchDebounceMs: number;
 }
 
-/** Khoá setting — phải khớp `contributes.settings[].key` trong orca-plugin.json. */
+/** Khoá setting — phải khớp `contributes.settings[].key` trong orca/plugin/orca-plugin.json. */
 export const SETTING_KEYS = {
   gitPath: 'gitPath',
   logPageSize: 'logPageSize',

@@ -120,7 +120,8 @@
     "release:patch": "npm version patch && git push --follow-tags",
     "release:minor": "npm version minor && git push --follow-tags",
     "release:major": "npm version major && git push --follow-tags",
-    "version": "npm run build:orca && git add orca-plugin.json orca/out"
+    "version": "npm run build:orca && git add orca/plugin",
+    "postversion": "node scripts/orca-catalog-release.mjs"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
