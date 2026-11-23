@@ -106,7 +106,7 @@ export function BranchFilter() {
         }
         onClick={() => setOpen((v) => !v)}
       >
-        ⎇ {label}
+        ⎇ <span className="sg-btn-label">{label}</span>
         <span className="sg-branch-caret">▾</span>
       </button>
       {/* Đang lọc: thêm nút ✕ bỏ hết lọc nhanh không cần mở dropdown. */}

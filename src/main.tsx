@@ -1,7 +1,7 @@
 import { Component, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
-import { IS_ORCA, IS_ORCA_EDITOR } from './env';
+import { IS_MINI, IS_ORCA, IS_ORCA_EDITOR } from './env';
 import './styles/global.css';
 import './styles/orca.css';
 
@@ -9,6 +9,10 @@ import './styles/orca.css';
 // HTML của Orca đã gắn sẵn; gắn lại ở đây phòng khi chạy từ entry khác.
 if (IS_ORCA) {
   document.documentElement.dataset.sgHost = 'orca';
+}
+// Móc CSS cho bố cục mini (styles/orca.css): graph hẹp, vùng chi tiết nằm dưới.
+if (IS_MINI) {
+  document.documentElement.dataset.sgLayout = 'mini';
 }
 // View giữa (custom editor): nhận tài liệu .sgit để Orca coi editor đã sẵn sàng.
 // Nội dung file không dùng — S-Git không bao giờ sửa nó (tab không bị "dirty").

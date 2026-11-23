@@ -15,6 +15,7 @@ dùng đọc — mô tả thay đổi nhìn thấy được, không phải tên 
   nút bật/tắt cây thư mục + nhánh ngay trong panel; status bar Orca hiện số file thay đổi
 - Orca: mở S-Git thành **tab ở vùng editor giữa** (nút **+** trên thanh tab → **S-Git**) — rộng
   hơn panel sidebar phải, hợp với graph nhiều nhánh và diff cạnh nhau
+- Orca: panel ở sidebar phải dùng **bố cục mini** — xếp trên/dưới, graph thu gọn, diff Unified
 
 ### Removed
 
@@ -22,6 +23,8 @@ dùng đọc — mô tả thay đổi nhìn thấy được, không phải tên 
 
 ### Changed
 
+- Ô lọc nhánh và ô tìm commit của History lên chung thanh toolbar (trước nút Working Tree /
+  History) — bớt 1 hàng chiều cao
 - Popup Checkout: ô **Nhánh mới** luôn được điền sẵn tên — lấy theo nhánh remote gần nhất chứa
   commit (`origin/dev` → `dev`, kể cả khi commit nằm giữa nhánh), không có thì theo nhánh local
   gần nhất; tên đã có nhánh local thì thêm hậu tố hash (`main-f975b96`) để `checkout -b` không bị từ chối

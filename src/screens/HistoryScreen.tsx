@@ -4,8 +4,8 @@
 // Danh sách graph ảo hoá (chỉ render viewport) — architecture.md mục 5.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { IS_MINI } from '../env';
 import type { CommitFileChange, CommitInfo } from '../../shared/types';
-import { BranchFilter } from '../components/BranchFilter';
 import { CheckoutDialog } from '../components/CheckoutDialog';
 import { CommitDetail } from '../components/CommitDetail';
 import { CommitRow } from '../components/CommitRow';
@@ -265,21 +265,8 @@ export function HistoryScreen() {
     <>
       <div className="sg-main">
         <div className="sg-graph-column">
-          {/* Cây nhánh nằm ở sidebar VSCode; header của graph có dropdown lọc
-              nhánh CỦA RIÊNG màn History (tách với filter sidebar — luôn thấy
-              rõ đang xem nhánh nào) + ô search commit (lọc trang đã tải). */}
-          <div className="sg-graph-header">
-            <span className="sg-graph-label">Branch:</span>
-            <BranchFilter />
-            <span className="sg-diff-spacer" />
-            <input
-              className="sg-filter-input inline"
-              placeholder="Search commits (message · author · hash)"
-              value={store.commitSearch ?? ''}
-              onChange={(e) => store.setCommitSearch(e.target.value || null)}
-            />
-          </div>
-
+          {/* Dropdown lọc nhánh + ô search commit của màn History nằm trên toolbar
+              chính (MainScreen) — tiết kiệm 1 hàng chiều cao. */}
           {/* tabIndex để nhận focus → phím ↑/↓ hoạt động; click row cũng focus. */}
           <div
             className="sg-commit-list"
@@ -318,14 +305,16 @@ export function HistoryScreen() {
 
         {selected && (
           <>
+            {/* Mini (Orca sidebar phải): chi tiết nằm DƯỚI danh sách, kéo theo chiều dọc. */}
             <Splitter
-              orientation="vertical"
+              orientation={IS_MINI ? 'horizontal' : 'vertical'}
               invert
-              onResize={(d) => layout.resize('detailWidth', d)}
+              onResize={(d) => layout.resize(IS_MINI ? 'miniDetailHeight' : 'detailWidth', d)}
             />
             <CommitDetail
               commit={selected}
               width={layout.detailWidth}
+              height={IS_MINI ? layout.miniDetailHeight : undefined}
               body={store.commitBody}
               files={store.commitFiles}
               selectedFile={store.selectedFile}

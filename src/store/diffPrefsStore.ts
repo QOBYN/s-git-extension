@@ -4,15 +4,19 @@
 
 import { create } from 'zustand';
 import type { DiffViewOptions } from '../components/DiffView';
+import { IS_MINI } from '../env';
 
 const DEFAULTS: DiffViewOptions = {
-  sideBySide: true, // SmartGit mặc định Side by Side (screenshot B7)
+  // SmartGit mặc định Side by Side (screenshot B7); bố cục mini (Orca sidebar
+  // phải, hẹp) mặc định Unified — 2 cột ở ~500px không đọc nổi.
+  sideBySide: !IS_MINI,
   compact: false,
   wordWrap: false,
   ignoreWhitespace: false,
 };
 
-const STORAGE_KEY = 's-git.diffPrefs';
+// Panel mini và view giữa của Orca chung localStorage (cùng origin) → nhớ riêng.
+const STORAGE_KEY = IS_MINI ? 's-git.diffPrefs.mini' : 's-git.diffPrefs';
 
 function load(): DiffViewOptions {
   try {

@@ -72,7 +72,7 @@ export function RepoDropdown() {
         onClick={() => setOpen((v) => !v)}
       >
         <RepoIcon />
-        {active?.name ?? 'Select repo'}
+        <span className="sg-btn-label">{active?.name ?? 'Select repo'}</span>
         {active !== null && active.activity !== 'none' && (
           <span className="sg-ref-badge tag">{active.activity}</span>
         )}

@@ -53,9 +53,10 @@ S-Git cũng chạy như một plugin của [Orca](https://orca.dev) (cần Orca 
 - **Mở ở giữa (rộng)**: nút **+** trên thanh tab → **S-Git** (hoặc Command Palette → `S-Git`)
   mở S-Git thành 1 tab ở vùng editor giữa — hợp với graph nhiều nhánh và diff cạnh nhau. Tab
   là file `.sgit` chưa lưu, S-Git không sửa nội dung nên đóng tab không bị hỏi lưu.
-- **Hoặc ở sidebar phải**: panel **S-Git**. Nút đầu tiên trên toolbar bật/tắt cây thư mục +
-  nhánh (sidebar của bản VS Code); chỗ hẹp thì cây nổi đè lên và tự đóng khi chọn xong.
-  *File Log* mở ngay trong view.
+- **Hoặc ở sidebar phải**: panel **S-Git** dạng mini — các vùng xếp trên/dưới (danh sách →
+  chi tiết commit / ô commit → diff), graph thu gọn để luôn đọc được message, diff mặc định
+  Unified. Nút đầu tiên trên toolbar bật/tắt cây thư mục + nhánh (sidebar của bản VS Code);
+  chỗ hẹp thì cây nổi đè lên và tự đóng khi chọn xong. *File Log* mở ngay trong view.
 - **Status bar** của Orca hiện số file thay đổi của workspace đang mở.
 - Khác bản VS Code: chưa có *Open in Integrated Terminal* / *Find in Folder*; video trong diff
   mở bằng trình phát của hệ điều hành; *Delete* chuyển vào Thùng rác của hệ điều hành.

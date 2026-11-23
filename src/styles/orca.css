@@ -136,14 +136,105 @@
   container: sg-orca-main / inline-size;
 }
 
-/* Panel chính hẹp: Fetch/Pull/Push chỉ còn icon (title vẫn giải thích). */
-@container sg-orca-main (max-width: 620px) {
-  .sg-toolbar .sg-toolbar-btn > span {
+/* Panel vừa (sidebar phải rộng): Fetch/Pull/Push chỉ còn icon (title vẫn giải
+   thích), bỏ nhãn "Branch:" — đủ chỗ cho bộ lọc History trên cùng 1 hàng. */
+@container sg-orca-main (max-width: 980px) {
+  .sg-toolbar .sg-toolbar-btn > span,
+  .sg-toolbar-history .sg-graph-label {
     display: none;
   }
   .sg-toolbar .sg-toolbar-btn {
     padding: 4px 6px;
   }
+  .sg-mode-toggle .sg-mode-btn {
+    padding: 3px 7px;
+  }
+}
+
+/* Bản MINI (panel sidebar phải): toolbar luôn gọn — nút Working Tree / History
+   dạng icon + số đếm, dropdown cắt chữ "…" — 1 hàng dù tên repo dài hay frame bị
+   Orca thu phóng. View giữa chỉ gọn lại khi thật sự hẹp (container query bên dưới). */
+:root[data-sg-layout='mini'] .sg-mode-toggle .sg-mode-label,
+:root[data-sg-layout='mini'] .sg-toolbar .sg-toolbar-sep,
+:root[data-sg-layout='mini'] .sg-toolbar .sg-toolbar-btn > span,
+:root[data-sg-layout='mini'] .sg-toolbar-history .sg-graph-label {
+  display: none;
+}
+:root[data-sg-layout='mini'] .sg-toolbar .sg-toolbar-btn {
+  padding: 4px 6px;
+}
+:root[data-sg-layout='mini'] .sg-mode-toggle .sg-mode-icon {
+  display: block;
+}
+:root[data-sg-layout='mini'] .sg-mode-toggle .sg-mode-btn {
+  padding: 3px 6px;
+  gap: 4px;
+}
+:root[data-sg-layout='mini'] .sg-toolbar > .sg-branch-filter .sg-branch-filter-btn {
+  max-width: 124px;
+}
+:root[data-sg-layout='mini'] .sg-toolbar-history .sg-branch-filter-btn {
+  max-width: 92px;
+}
+/* Nhóm lọc History nhận hết chỗ trống (spacer thôi giãn), basis nhỏ để
+   flex-wrap không đẩy toggle mode xuống hàng. */
+:root[data-sg-layout='mini'] .sg-toolbar-history {
+  flex-basis: 120px;
+  gap: 4px;
+  margin-right: 2px;
+}
+:root[data-sg-layout='mini'] .sg-toolbar > .sg-diff-spacer {
+  flex: 0 0 0;
+}
+/* Spacer thôi giãn → toggle mode tự đẩy về cuối hàng (màn Working Tree không có nhóm lọc). */
+:root[data-sg-layout='mini'] .sg-toolbar > .sg-mode-toggle {
+  margin-left: auto;
+}
+:root[data-sg-layout='mini'] .sg-toolbar .sg-toolbar-search {
+  min-width: 50px;
+}
+
+/* View giữa bị kéo hẹp (≤600px): nút Working Tree / History thành icon + số
+   đếm, dropdown repo / lọc nhánh cắt chữ "…" — giữ toolbar trên 1 hàng. */
+@container sg-orca-main (max-width: 600px) {
+  .sg-mode-toggle .sg-mode-label,
+  .sg-toolbar .sg-toolbar-sep {
+    display: none;
+  }
+  .sg-mode-toggle .sg-mode-icon {
+    display: block;
+  }
+  .sg-mode-toggle .sg-mode-btn {
+    padding: 3px 6px;
+    gap: 4px;
+  }
+  .sg-toolbar > .sg-branch-filter .sg-branch-filter-btn {
+    max-width: 104px;
+  }
+  .sg-toolbar-history .sg-branch-filter-btn {
+    max-width: 80px;
+  }
+  /* Nhóm lọc History nhận hết chỗ trống (spacer thôi giãn), basis nhỏ để
+     flex-wrap không đẩy toggle mode xuống hàng. */
+  .sg-toolbar-history {
+    flex-basis: 120px;
+    gap: 4px;
+    margin-right: 2px;
+  }
+  .sg-toolbar > .sg-diff-spacer {
+    flex: 0 0 0;
+  }
+  /* Spacer thôi giãn → toggle mode tự đẩy về cuối hàng (màn Working Tree không có nhóm lọc). */
+  .sg-toolbar > .sg-mode-toggle {
+    margin-left: auto;
+  }
+  .sg-toolbar .sg-toolbar-search {
+    min-width: 50px;
+  }
+}
+
+/* Panel hẹp: diff toolbar xuống dòng. */
+@container sg-orca-main (max-width: 620px) {
   /* Thanh công cụ diff: xuống dòng thay vì tràn ngang (tên file 1 dòng riêng). */
   .sg-diff-toolbar {
     flex-wrap: wrap;
@@ -174,4 +265,32 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* ===== Bố cục MINI: panel S-Git ở sidebar phải (src/env.ts IS_MINI) =====
+   Sidebar phải hẹp mà cao → các vùng xếp TRÊN/DƯỚI: danh sách → chi tiết commit
+   (hoặc ô commit) → diff. View giữa (custom editor) giữ bố cục trái/phải. */
+
+:root[data-sg-layout='mini'] .sg-main {
+  flex-direction: column;
+}
+
+:root[data-sg-layout='mini'] .sg-graph-column,
+:root[data-sg-layout='mini'] .sg-wt-left {
+  min-height: 0;
+}
+
+:root[data-sg-layout='mini'] .sg-detail,
+:root[data-sg-layout='mini'] .sg-commit-panel {
+  width: auto;
+  flex-shrink: 0;
+  border-left: none;
+  border-top: 1px solid var(--sg-border);
+}
+
+/* Repo nhiều nhánh có thể vẽ vài chục lane — mini chỉ hiện ~8 lane đầu (lane
+   chính nằm trái) để message commit luôn đọc được. */
+:root[data-sg-layout='mini'] .sg-graph-cell {
+  max-width: 112px;
+  flex-shrink: 0;
 }

@@ -265,7 +265,21 @@ button {
   flex-shrink: 0;
 }
 
+/* Chữ trong nút dropdown (repo / lọc nhánh) — co lại bằng "…" khi chỗ hẹp. */
+.sg-btn-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Icon của nút Working Tree / History — chỉ bật khi panel hẹp (styles/orca.css). */
+.sg-mode-icon {
+  display: none;
+  flex-shrink: 0;
+}
+
 .sg-branch-filter-btn {
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1703,11 +1717,36 @@ button.sg-submodule-more:disabled {
 .sg-toolbar {
   display: flex;
   align-items: center;
+  /* Panel hẹp: xuống hàng thay vì tràn ngang (bộ lọc History khá rộng). */
+  flex-wrap: wrap;
   gap: 2px;
+  row-gap: 3px;
   padding: 3px 8px;
   border-bottom: 1px solid var(--sg-border);
   background: var(--sg-bg-panel);
   flex-shrink: 0;
+}
+
+/* Bộ lọc của màn History trên toolbar: [Branch: ▾][search] ngay trước toggle mode. */
+.sg-toolbar-history {
+  display: flex;
+  /* basis nhỏ cố ý: flex-wrap quyết định xuống hàng theo basis — để auto thì
+     bề rộng tự nhiên của <input> (~200px) đẩy toggle mode xuống hàng sớm. */
+  flex: 1 1 180px;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-right: 6px;
+}
+
+/* Ô tìm là phần co giãn của hàng: rộng thì nở tới 300px, hẹp thì co về 70px
+   trước khi toolbar phải xuống hàng (flex-wrap ngắt dòng theo flex-basis). */
+.sg-toolbar .sg-toolbar-search {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 70px;
+  max-width: 300px;
 }
 
 .sg-toolbar-btn {

@@ -10,15 +10,27 @@ export interface LayoutSizes {
   detailWidth: number;
   /** Chiều cao panel diff (đáy). */
   diffHeight: number;
+  /** Bố cục mini (Orca sidebar phải): chiều cao chi tiết commit nằm DƯỚI danh sách. */
+  miniDetailHeight: number;
+  /** Bố cục mini: chiều cao ô commit nằm DƯỚI danh sách file Working Tree. */
+  miniCommitHeight: number;
 }
 
-const DEFAULT_SIZES: LayoutSizes = { branchesWidth: 210, detailWidth: 340, diffHeight: 300 };
+const DEFAULT_SIZES: LayoutSizes = {
+  branchesWidth: 210,
+  detailWidth: 340,
+  diffHeight: 300,
+  miniDetailHeight: 200,
+  miniCommitHeight: 170,
+};
 
 /** Giới hạn kéo cho từng vùng — không hardcode rải rác ở component. */
 export const SIZE_LIMITS: Record<keyof LayoutSizes, { min: number; max: number }> = {
   branchesWidth: { min: 140, max: 480 },
   detailWidth: { min: 240, max: 640 },
   diffHeight: { min: 120, max: 900 },
+  miniDetailHeight: { min: 90, max: 700 },
+  miniCommitHeight: { min: 110, max: 500 },
 };
 
 const STORAGE_KEY = 's-git.layoutSizes';
@@ -49,8 +61,10 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
     const next = Math.min(max, Math.max(min, get()[key] + delta));
     set({ [key]: next } as Partial<LayoutSizes>);
     try {
-      const { branchesWidth, detailWidth, diffHeight } = get();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ branchesWidth, detailWidth, diffHeight }));
+      const sizes = Object.fromEntries(
+        (Object.keys(DEFAULT_SIZES) as Array<keyof LayoutSizes>).map((k) => [k, get()[k]]),
+      );
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sizes));
     } catch {
       // không lưu được thì thôi — size vẫn đúng trong phiên hiện tại
     }

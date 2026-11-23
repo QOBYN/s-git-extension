@@ -11,7 +11,9 @@ import { FileListModeToggle, FileTreeList, treeRowPadding } from './FileTreeList
 
 interface Props {
   commit: CommitInfo;
+  /** Cột bên phải: bề rộng. Bố cục mini (nằm dưới danh sách): truyền `height` thay thế. */
   width: number;
+  height?: number;
   body: string | null;
   files: CommitFileChange[];
   selectedFile: CommitFileChange | null;
@@ -37,6 +39,7 @@ const KIND_LETTER: Record<CommitFileChange['kind'], string> = {
 export function CommitDetail({
   commit,
   width,
+  height,
   body,
   files,
   selectedFile,
@@ -90,7 +93,7 @@ export function CommitDetail({
   };
 
   return (
-    <aside className="sg-detail" style={{ width }}>
+    <aside className="sg-detail" style={height !== undefined ? { height } : { width }}>
       <div className="sg-detail-header">
         <AuthorBadge name={commit.author} />
         <div>

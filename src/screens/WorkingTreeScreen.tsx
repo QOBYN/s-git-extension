@@ -3,6 +3,7 @@
 // luôn hiện bên phải, banner trạng thái merging/rebasing (D2), diff dưới đáy.
 
 import { useEffect, useRef, useState } from 'react';
+import { IS_MINI } from '../env';
 import type { FileChange } from '../../shared/types';
 import { ContextMenu, type MenuState } from '../components/ContextMenu';
 import { DiffPanel } from '../components/DiffPanel';
@@ -284,11 +285,17 @@ export function WorkingTreeScreen() {
           />
         </div>
 
-        <Splitter orientation="vertical" invert onResize={(d) => layout.resize('detailWidth', d)} />
+        {/* Mini (Orca sidebar phải): ô commit nằm DƯỚI danh sách file. */}
+        <Splitter
+          orientation={IS_MINI ? 'horizontal' : 'vertical'}
+          invert
+          onResize={(d) => layout.resize(IS_MINI ? 'miniCommitHeight' : 'detailWidth', d)}
+        />
         <CommitPanel
           branch={status?.branch ?? null}
           canCommit={staged.length > 0}
           width={layout.detailWidth}
+          height={IS_MINI ? layout.miniCommitHeight : undefined}
         />
       </div>
 
@@ -528,16 +535,19 @@ function CommitPanel({
   branch,
   canCommit,
   width,
+  height,
 }: {
   branch: string | null;
   canCommit: boolean;
   width: number;
+  /** Bố cục mini: ô commit nằm dưới danh sách → cố định chiều cao thay vì bề rộng. */
+  height?: number;
 }) {
   const store = useRepoStore();
   const [amend, setAmend] = useState(false);
 
   return (
-    <aside className="sg-commit-panel" style={{ width }}>
+    <aside className="sg-commit-panel" style={height !== undefined ? { height } : { width }}>
       <div className="sg-commit-target">
         Commit to: <b>{branch ?? '(detached HEAD)'}</b>
       </div>

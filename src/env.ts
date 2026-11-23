@@ -10,3 +10,9 @@ export const IS_ORCA = typeof window !== 'undefined' && window.orca != null;
  */
 export const IS_ORCA_EDITOR =
   IS_ORCA && typeof document !== 'undefined' && document.documentElement.dataset.sgSurface === 'editor';
+
+/**
+ * Bố cục MINI: panel ở sidebar phải của Orca (hẹp, cao) — các vùng xếp trên/dưới
+ * thay vì trái/phải, graph giới hạn bề rộng. View giữa và VSCode dùng bố cục đầy đủ.
+ */
+export const IS_MINI = IS_ORCA && !IS_ORCA_EDITOR;

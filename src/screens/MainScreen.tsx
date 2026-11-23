@@ -1,9 +1,11 @@
-// Khung panel chính: [toolbar: dropdown repo + Fetch/Pull/Push (A1) + toggle
-// Working Tree | History (A2)] / thân màn hình / [status bar].
+// Khung panel chính: [toolbar: dropdown repo + Fetch/Pull/Push (A1) + lọc nhánh /
+// tìm commit (màn History) + toggle Working Tree | History (A2)] / thân màn hình /
+// [status bar].
 // Working Tree và History dùng chung khung này.
 // (Merge/Reset chuyển vào context menu commit của History — ít dùng ở toolbar.)
 
 import { useEffect, useState } from 'react';
+import { BranchFilter } from '../components/BranchFilter';
 import { ContextMenu, type MenuState } from '../components/ContextMenu';
 import { DirtyGuardDialog } from '../components/DirtyGuardDialog';
 import { PullDialog } from '../components/PullDialog';
@@ -96,19 +98,38 @@ export function MainScreen({ sidebar }: Props = {}) {
           </button>
         </div>
         <span className="sg-diff-spacer" />
+        {/* Bộ lọc của màn History: nhánh (tách với filter sidebar) + tìm commit
+            (lọc client-side trang đã tải). File Log có header riêng nên ẩn. */}
+        {store.uiMode === 'history' && store.fileLogPath === null && (
+          <div className="sg-toolbar-history">
+            <span className="sg-graph-label">Branch:</span>
+            <BranchFilter />
+            <input
+              className="sg-filter-input inline sg-toolbar-search"
+              placeholder="Search commits (message · author · hash)"
+              value={store.commitSearch ?? ''}
+              onChange={(e) => store.setCommitSearch(e.target.value || null)}
+            />
+          </div>
+        )}
         <div className="sg-mode-toggle">
+          {/* Icon chỉ hiện khi panel hẹp (thay nhãn chữ — styles/orca.css). */}
           <button
             className={`sg-mode-btn${store.uiMode === 'workingTree' ? ' active' : ''}`}
+            title="Working Tree"
             onClick={() => store.setMode('workingTree')}
           >
-            Working Tree
+            <WorkingTreeIcon />
+            <span className="sg-mode-label">Working Tree</span>
             {changedCount > 0 && <span className="sg-count-badge">{changedCount}</span>}
           </button>
           <button
             className={`sg-mode-btn${store.uiMode === 'history' ? ' active' : ''}`}
+            title="History"
             onClick={() => store.setMode('history')}
           >
-            History
+            <HistoryIcon />
+            <span className="sg-mode-label">History</span>
           </button>
         </div>
       </div>
@@ -190,6 +211,27 @@ function ToolbarButton({
 
 // Icon SVG inline theo currentColor (CSP chặn tài nguyên ngoài) — nét 1.5px
 // cùng phong cách codicon.
+
+/** Tờ giấy có dấu +/− (thay đổi chưa commit) — nút Working Tree khi hẹp. */
+function WorkingTreeIcon() {
+  return (
+    <svg className="sg-mode-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <path d="M3.5 1.75h6l3 3v9.5h-9z" />
+      <path d="M8 6.5v4M6 8.5h4" />
+    </svg>
+  );
+}
+
+/** Chuỗi commit nối nhau — nút History khi hẹp. */
+function HistoryIcon() {
+  return (
+    <svg className="sg-mode-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <circle cx="8" cy="3.5" r="1.75" />
+      <circle cx="8" cy="12.5" r="1.75" />
+      <path d="M8 5.25v5.5" />
+    </svg>
+  );
+}
 
 /** Khung có cột trái (bật/tắt cây sidebar nhúng — Orca). */
 function SidebarIcon() {
