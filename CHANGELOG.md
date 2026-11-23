@@ -8,6 +8,8 @@ dùng đọc — mô tả thay đổi nhìn thấy được, không phải tên 
 
 ## [Unreleased]
 
+## [0.0.8] - 2026-11-23
+
 ### Changed
 
 - Gói nhẹ hơn nhiều: bộ xem diff chỉ nạp phần cần của Monaco (bỏ gợi ý code, language
