@@ -87,6 +87,50 @@ export function parseStatusV2(stdout: string): StatusResult {
   return result;
 }
 
+/** Trạng thái 1 submodule đang có thay đổi (rút từ field <sub> "S<c><m><u>"). */
+export interface SubmoduleState {
+  path: string;
+  /** <c> = 'C': repo con đang đứng ở commit KHÁC con trỏ ghi trong index repo cha. */
+  pointerMoved: boolean;
+  /** <m> = 'M' hoặc <u> = 'U': bên trong repo con có thay đổi tracked / file untracked. */
+  dirty: boolean;
+}
+
+/**
+ * Lọc các entry submodule từ cùng output `status --porcelain=v2 -z` — chỉ submodule
+ * đang có thay đổi mới có entry. Dùng cho checkout "Stash & re-apply" quyết định
+ * submodule nào phải stash bên trong, submodule nào giữ nguyên chỗ đứng.
+ */
+export function parseSubmoduleStates(stdout: string): SubmoduleState[] {
+  const states: SubmoduleState[] = [];
+  const tokens = stdout.split(NUL);
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token === '') {
+      continue;
+    }
+    // Số field trước path của từng loại record (xem parseStatusV2).
+    const count = token[0] === '1' ? 8 : token[0] === '2' ? 9 : token[0] === 'u' ? 10 : 0;
+    if (count === 0) {
+      continue;
+    }
+    const { fields, rest } = splitFields(token, count);
+    if (token[0] === '2') {
+      i++; // token kế là origPath — bỏ qua
+    }
+    const sub = fields[2];
+    if (!isSubmodule(sub) || rest === '') {
+      continue;
+    }
+    states.push({
+      path: rest,
+      pointerMoved: sub[1] === 'C',
+      dirty: sub[2] === 'M' || sub[3] === 'U',
+    });
+  }
+  return states;
+}
+
 function parseHeader(token: string, result: StatusResult): void {
   if (token.startsWith('# branch.head ')) {
     const head = token.slice('# branch.head '.length);

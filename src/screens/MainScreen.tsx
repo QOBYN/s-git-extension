@@ -1,23 +1,26 @@
 // Khung panel chính: [toolbar: dropdown repo + Fetch/Pull/Push (A1) + toggle
-// Working Tree | History (A2) + Feedback] / thân màn hình / [status bar].
+// Working Tree | History (A2)] / thân màn hình / [status bar].
 // Working Tree và History dùng chung khung này.
 // (Merge/Reset chuyển vào context menu commit của History — ít dùng ở toolbar.)
 
 import { useEffect, useState } from 'react';
 import { ContextMenu, type MenuState } from '../components/ContextMenu';
 import { DirtyGuardDialog } from '../components/DirtyGuardDialog';
-import { FeedbackButton } from '../components/FeedbackButton';
-import { FeedbackDialog } from '../components/FeedbackDialog';
 import { PullDialog } from '../components/PullDialog';
 import { PushToDialog } from '../components/PushToDialog';
 import { RepoDropdown } from '../components/RepoDropdown';
 import { useRepoStore } from '../store/repoStore';
+import { FileLogScreen } from './FileLogScreen';
 import { HistoryScreen } from './HistoryScreen';
 import { WorkingTreeScreen } from './WorkingTreeScreen';
 
-export function MainScreen() {
+interface Props {
+  /** Orca: panel có cây sidebar nhúng bên trái — nút ☰ đầu toolbar bật/tắt nó. */
+  sidebar?: { open: boolean; onToggle(): void };
+}
+
+export function MainScreen({ sidebar }: Props = {}) {
   const store = useRepoStore();
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
   /** Popup Pull (chọn merge/rebase/ff-only — nhớ lựa chọn cũ). */
   const [pullOpen, setPullOpen] = useState(false);
   /** Dialog "Push to…" (từ menu mũi tên của nút Push). */
@@ -45,9 +48,19 @@ export function MainScreen() {
 
   return (
     <div className="sg-app">
-      {/* 1 thanh duy nhất: [dropdown repo] [Fetch/Pull/Push] … [toggle mode] [Feedback]
+      {/* 1 thanh duy nhất: [dropdown repo] [Fetch/Pull/Push] … [toggle mode]
           — dãy tab repo cũ gộp vào đây dưới dạng dropdown có search. */}
       <div className="sg-toolbar">
+        {sidebar !== undefined && (
+          <button
+            className={`sg-toolbar-btn sg-icon-btn${sidebar.open ? ' active' : ''}`}
+            title={sidebar.open ? 'Ẩn cây thư mục / nhánh' : 'Hiện cây thư mục / nhánh'}
+            aria-pressed={sidebar.open}
+            onClick={sidebar.onToggle}
+          >
+            <SidebarIcon />
+          </button>
+        )}
         <RepoDropdown />
         <span className="sg-toolbar-sep" />
         <ToolbarButton
@@ -98,13 +111,18 @@ export function MainScreen() {
             History
           </button>
         </div>
-        {/* Feedback đứng cuối — không phải thao tác git. */}
-        <FeedbackButton onClick={() => setFeedbackOpen(true)} />
       </div>
 
       {store.error !== null && <div className="sg-error">{store.error}</div>}
 
-      {store.uiMode === 'workingTree' ? <WorkingTreeScreen /> : <HistoryScreen />}
+      {/* File Log nhúng (Orca) thay chỗ thân màn hình; VSCode mở tab File Log riêng. */}
+      {store.fileLogPath !== null ? (
+        <FileLogScreen embedded={{ onBack: () => void store.closeFileLog() }} />
+      ) : store.uiMode === 'workingTree' ? (
+        <WorkingTreeScreen />
+      ) : (
+        <HistoryScreen />
+      )}
 
       {pushMenu && <ContextMenu menu={pushMenu} onClose={() => setPushMenu(null)} />}
 
@@ -132,18 +150,6 @@ export function MainScreen() {
           currentBranch={activeRepo.branch}
           onSubmit={(target) => void store.remoteOp('push', { pushTo: target })}
           onClose={() => setPushToOpen(false)}
-        />
-      )}
-
-      {feedbackOpen && (
-        <FeedbackDialog
-          context={{
-            screen: 'main',
-            repoName: activeRepo?.name ?? null,
-            branch: activeRepo?.branch ?? null,
-          }}
-          onSent={(message) => useRepoStore.setState({ statusMessage: message })}
-          onClose={() => setFeedbackOpen(false)}
         />
       )}
 
@@ -184,6 +190,16 @@ function ToolbarButton({
 
 // Icon SVG inline theo currentColor (CSP chặn tài nguyên ngoài) — nét 1.5px
 // cùng phong cách codicon.
+
+/** Khung có cột trái (bật/tắt cây sidebar nhúng — Orca). */
+function SidebarIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" />
+      <path d="M6 3v10" />
+    </svg>
+  );
+}
 
 /** Mũi tên vòng (đồng bộ refs từ remote). */
 function FetchIcon() {

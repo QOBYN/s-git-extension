@@ -252,6 +252,15 @@ export interface CheckoutOptions {
 }
 
 /**
+ * Kết quả checkout kiểu "Stash & re-apply": checkout ĐÃ xong; `warnings` là các
+ * bước sau đó (sync submodule, stash pop) gặp lỗi — thay đổi liên quan vẫn nằm
+ * trong stash của repo tương ứng. path null = repo cha, có giá trị = submodule đó.
+ */
+export interface CheckoutStashResult {
+  warnings: { path: string | null; message: string }[];
+}
+
+/**
  * Popup Checkout: cách xử lý thay đổi chưa commit trước khi checkout
  * (double-click dòng log / menu Check Out… — nhớ lựa chọn lần trước).
  */
@@ -280,52 +289,3 @@ export interface GitErrorInfo {
   code: number;
   stderr: string;
 }
-
-// ---- feedback (gửi góp ý về group Telegram) ----
-
-export type FeedbackCategory = 'bug' | 'idea' | 'question' | 'other';
-
-/**
- * 1 file/ảnh đính kèm. Đi qua RPC nên nội dung phải là chuỗi:
- * base64 THUẦN (không có tiền tố `data:...;base64,`).
- */
-export interface FeedbackAttachment {
-  name: string;
-  /** MIME từ File.type của webview; rỗng khi trình duyệt không đoán được. */
-  mimeType: string;
-  /** Kích thước thật (byte) — dùng để chặn file quá lớn trước khi encode. */
-  size: number;
-  dataBase64: string;
-}
-
-/** Ngữ cảnh webview tự biết, đính vào cuối message để người nhận đỡ phải hỏi lại. */
-export interface FeedbackContext {
-  /** Màn hình đang mở lúc bấm Feedback. */
-  screen: 'main' | 'sidebar' | 'file-log';
-  repoName?: string | null;
-  branch?: string | null;
-}
-
-export interface FeedbackPayload {
-  category: FeedbackCategory;
-  /** Tiêu đề ngắn — thành dòng đầu của message Telegram. */
-  title: string;
-  message: string;
-  /** Cách liên hệ lại (tên/email/@telegram) — rỗng = ẩn danh. */
-  contact: string;
-  attachments: FeedbackAttachment[];
-  context?: FeedbackContext;
-}
-
-/**
- * Kết quả gửi. KHÔNG dùng exception: Error qua postMessage bị JSON hoá thành `{}`
- * nên webview sẽ mất thông điệp — trả object để UI luôn hiện được lý do thất bại.
- */
-export type FeedbackResult =
-  | {
-      ok: true;
-      sentAttachments: number;
-      /** File gửi hỏng nhưng message vẫn tới nơi — form cảnh báo, không coi là thất bại. */
-      skippedAttachments: string[];
-    }
-  | { ok: false; error: string };

@@ -2,6 +2,8 @@ node_modules/
 dist/
 *.vsix
 .vite/
+# Orca: typings/ảnh chụp do `orca plugin types|dev watch|shot` sinh ra
+.orca/
 .DS_Store
 .claude/settings.local.json
 

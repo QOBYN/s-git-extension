@@ -189,6 +189,24 @@ describe('GitService — thao tác ghi', () => {
     expect(normal.opts.exclusive).toBe(true);
   });
 
+  it('suggestBranchName: ưu tiên nhánh remote gần nhất, fallback nhánh local, không có → null', async () => {
+    const byRefs = (args: string[]) => args.find((a) => a.startsWith('--refs='));
+    const remoteOnly = new FakeGitRunner((args) =>
+      byRefs(args) === '--refs=refs/remotes/*' ? 'remotes/origin/main~1\n' : 'main\n',
+    );
+    expect(await new GitService(remoteOnly).suggestBranchName('/repo', 'abc')).toBe('main');
+    expect(remoteOnly.callsOf('name-rev')).toHaveLength(1); // trúng remote thì không hỏi local
+    expect(remoteOnly.callsOf('name-rev')[0].args).toContain('--exclude=refs/remotes/*/HEAD');
+
+    const localOnly = new FakeGitRunner((args) =>
+      byRefs(args) === '--refs=refs/remotes/*' ? 'undefined\n' : 'dev~2\n',
+    );
+    expect(await new GitService(localOnly).suggestBranchName('/repo', 'abc')).toBe('dev');
+
+    const none = new FakeGitRunner(() => 'undefined\n');
+    expect(await new GitService(none).suggestBranchName('/repo', 'abc')).toBeNull();
+  });
+
   it('checkout: --force chỉ thêm khi popup chọn discard', async () => {
     const runner = new FakeGitRunner(() => '');
     const git = new GitService(runner);
@@ -204,6 +222,34 @@ describe('GitService — thao tác ghi', () => {
     expect(runner.callsOf('submodule')).toHaveLength(0);
   });
 
+  it('checkout opts null (webview không truyền, postMessage JSON hoá undefined → null) không crash', async () => {
+    const runner = new FakeGitRunner((args) => {
+      if (args[0] === 'config') {
+        return 'submodule.libsub.path\nlibsub\0'; // repo có submodule — nhánh đọc opts.force
+      }
+      return '';
+    });
+    const git = new GitService(runner);
+
+    await git.checkout('/repo', 'main', null);
+
+    expect(runner.callsOf('checkout')[0].args).toEqual(['checkout', 'main']);
+    expect(runner.callsOf('submodule')[0].args).toEqual(['submodule', 'update', '--init']);
+  });
+
+  it('pull/push/stashPush nhận null như không truyền (cùng lý do JSON hoá)', async () => {
+    const runner = new FakeGitRunner(() => '');
+    const git = new GitService(runner);
+
+    await git.pull('/repo', null);
+    await git.push('/repo', null);
+    await git.stashPush('/repo', null);
+
+    expect(runner.callsOf('pull')[0].args).toEqual(['pull']);
+    expect(runner.callsOf('push')[0].args).toEqual(['push']);
+    expect(runner.callsOf('stash')[0].args).toEqual(['stash', 'push', '--include-untracked']);
+  });
+
   it('checkout newBranch: tạo nhánh mới tại ref bằng -b (popup Checkout "Nhánh mới")', async () => {
     const runner = new FakeGitRunner(() => '');
     const git = new GitService(runner);
@@ -214,6 +260,106 @@ describe('GitService — thao tác ghi', () => {
     const [plain, forced] = runner.callsOf('checkout');
     expect(plain.args).toEqual(['checkout', '-b', 'feature/x', 'abc1234']);
     expect(forced.args).toEqual(['checkout', '--force', '-b', 'feature/y', 'abc1234']);
+  });
+
+  describe('checkoutStashReapply (popup Checkout: Stash & re-apply, có submodule)', () => {
+    const GITMODULES = 'submodule.shared.path\n4x-shared\0submodule.other.path\nlibs/other\0';
+    const H = '160000 160000 160000 ' + 'a'.repeat(40) + ' ' + 'a'.repeat(40);
+    const SAVED = 'Saved working directory and index state';
+
+    it('submodule dirty (không lệch): stash bên trong repo con → checkout → update → pop cha rồi pop con', async () => {
+      const runner = new FakeGitRunner((args) => {
+        if (args[0] === 'config') return GITMODULES;
+        if (args[0] === 'status') return `1 .M S.M. ${H} 4x-shared\0`;
+        if (args[0] === 'stash' && args[1] === 'push') return SAVED;
+        return '';
+      });
+      const git = new GitService(runner);
+
+      const result = await git.checkoutStashReapply('/repo', 'feature', undefined, 'msg');
+
+      expect(result).toEqual({ warnings: [] });
+      const steps = runner.calls
+        .filter((c) => ['stash', 'checkout', 'submodule'].includes(c.args[0]))
+        .map((c) => `${c.cwd} ${c.args.join(' ')}`);
+      expect(steps).toEqual([
+        '/repo stash push --include-untracked -m msg',
+        '/repo/4x-shared stash push --include-untracked -m msg',
+        '/repo checkout feature',
+        // libs/other không lệch con trỏ → cũng theo nhánh mới; không --force.
+        '/repo submodule update --init -- 4x-shared libs/other',
+        '/repo stash pop',
+        '/repo/4x-shared stash pop',
+      ]);
+    });
+
+    it('submodule lệch con trỏ, không dirty: không stash trong con, không update nó — giữ chỗ đứng', async () => {
+      const runner = new FakeGitRunner((args) => {
+        if (args[0] === 'config') return GITMODULES;
+        if (args[0] === 'status') return `1 .M SC.. ${H} 4x-shared\0`;
+        // repo cha không có gì cất được (stash không cất gitlink).
+        if (args[0] === 'stash' && args[1] === 'push') return 'No local changes to save';
+        return '';
+      });
+      const git = new GitService(runner);
+
+      await git.checkoutStashReapply('/repo', 'feature', { newBranch: 'nb' });
+
+      expect(runner.callsOf('checkout')[0].args).toEqual(['checkout', '-b', 'nb', 'feature']);
+      expect(runner.callsOf('submodule')[0].args).toEqual([
+        'submodule', 'update', '--init', '--', 'libs/other',
+      ]);
+      expect(runner.callsOf('stash').map((c) => c.args[1])).toEqual(['push']); // không pop
+    });
+
+    it('checkout hỏng → pop lại cha và từng submodule đã stash, rồi ném lỗi gốc', async () => {
+      const runner = new FakeGitRunner((args) => {
+        if (args[0] === 'config') return GITMODULES;
+        if (args[0] === 'status') return `1 .M S..U ${H} 4x-shared\0`;
+        if (args[0] === 'stash' && args[1] === 'push') return SAVED;
+        if (args[0] === 'checkout') return new GitError('checkout', 1, 'pathspec did not match');
+        return '';
+      });
+      const git = new GitService(runner);
+
+      await expect(git.checkoutStashReapply('/repo', 'nope')).rejects.toThrow('pathspec');
+
+      const pops = runner.callsOf('stash').filter((c) => c.args[1] === 'pop').map((c) => c.cwd);
+      expect(pops).toEqual(['/repo', '/repo/4x-shared']);
+      expect(runner.callsOf('submodule')).toHaveLength(0);
+    });
+
+    it('stash pop trong submodule conflict → checkout vẫn xong, trả warning kèm path', async () => {
+      const runner = new FakeGitRunner((args, cwd) => {
+        if (args[0] === 'config') return GITMODULES;
+        if (args[0] === 'status') return `1 .M S.M. ${H} 4x-shared\0`;
+        if (args[0] === 'stash' && args[1] === 'push') return SAVED;
+        if (args[0] === 'stash' && args[1] === 'pop' && cwd === '/repo/4x-shared') {
+          return new GitError('stash pop', 1, 'CONFLICT (content): f');
+        }
+        return '';
+      });
+      const git = new GitService(runner);
+
+      const result = await git.checkoutStashReapply('/repo', 'feature');
+
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0].path).toBe('4x-shared');
+      expect(result.warnings[0].message).toContain('CONFLICT');
+    });
+
+    it('repo không submodule: stash → checkout → pop, không gọi status/submodule', async () => {
+      const runner = new FakeGitRunner((args) =>
+        args[0] === 'stash' && args[1] === 'push' ? SAVED : '',
+      );
+      const git = new GitService(runner);
+
+      await git.checkoutStashReapply('/repo', 'main');
+
+      expect(runner.callsOf('status')).toHaveLength(0);
+      expect(runner.callsOf('submodule')).toHaveLength(0);
+      expect(runner.callsOf('stash').map((c) => c.args[1])).toEqual(['push', 'pop']);
+    });
   });
 
   it('checkout repo có submodule + sạch → submodule update --init SAU checkout', async () => {
@@ -343,6 +489,28 @@ describe('GitService — thao tác trạng thái (merge/rebase flow, spec 2.4)',
     const call = runner.callsOf('restore')[0];
     expect(call.args).toEqual(['restore', '--', 'a.ts']);
     expect(call.opts.exclusive).toBe(true);
+  });
+
+  it('discard path submodule: dùng submodule update --force (restore không đụng gitlink)', async () => {
+    const runner = new FakeGitRunner((args) =>
+      args[0] === 'config' ? 'submodule.shared.path\n4x-shared\0' : '',
+    );
+    await new GitService(runner).discard('/repo', ['4x-shared', 'a.ts']);
+
+    expect(runner.callsOf('restore')[0].args).toEqual(['restore', '--', 'a.ts']);
+    const sub = runner.callsOf('submodule')[0];
+    expect(sub.args).toEqual(['submodule', 'update', '--init', '--force', '--', '4x-shared']);
+    expect(sub.opts.exclusive).toBe(true);
+  });
+
+  it('discard chỉ submodule: không gọi restore với danh sách rỗng', async () => {
+    const runner = new FakeGitRunner((args) =>
+      args[0] === 'config' ? 'submodule.shared.path\n4x-shared\0' : '',
+    );
+    await new GitService(runner).discard('/repo', ['4x-shared']);
+
+    expect(runner.callsOf('restore')).toHaveLength(0);
+    expect(runner.callsOf('submodule')).toHaveLength(1);
   });
 
   it('abortOperation chọn đúng lệnh theo trạng thái', async () => {

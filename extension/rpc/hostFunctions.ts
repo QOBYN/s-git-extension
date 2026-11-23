@@ -18,7 +18,6 @@ import {
   isVideoExtension,
 } from '../services/binaryDetect';
 import type { CacheIndex } from '../services/cacheIndex';
-import type { FeedbackService } from '../services/feedbackService';
 import type { GitService } from '../services/gitService';
 import type { MediaExporter } from '../services/mediaExporter';
 import type { RepoManager } from '../services/repoManager';
@@ -59,7 +58,6 @@ export interface HostFunctionDeps {
   cache: CacheIndex;
   panelOpener: PanelOpener;
   shell: ShellPort;
-  feedback: FeedbackService;
   /** Xuất blob video ra thư mục tạm để webview đọc trực tiếp (diff video). */
   mediaExporter: MediaExporter;
   /** Đổi fsPath → webview URI (impl ở views/webviewHost — cần 1 webview đang sống). */
@@ -75,7 +73,6 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
     cache,
     panelOpener,
     shell,
-    feedback,
     mediaExporter,
     toWebviewUri,
   } = deps;
@@ -117,6 +114,7 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
     getLog: (repoRoot, opts) => getLogCached(repoRoot, opts),
 
     listRefs: (repoRoot) => git.listRefs(repoRoot),
+    suggestBranchName: (repoRoot, oid) => git.suggestBranchName(repoRoot, oid),
     getSubmoduleLog: (repoRoot, path, range, skip) =>
       git.getSubmoduleLog(repoRoot, path, range, skip),
     getCommitFiles: (repoRoot, oid) => git.getCommitFiles(repoRoot, oid),
@@ -210,6 +208,8 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
 
     discard: (repoRoot, paths) => git.discard(repoRoot, paths),
     checkout: (repoRoot, ref, opts) => git.checkout(repoRoot, ref, opts),
+    checkoutStashReapply: (repoRoot, ref, opts, stashMessage) =>
+      git.checkoutStashReapply(repoRoot, ref, opts, stashMessage),
     stashPush: (repoRoot, message) => git.stashPush(repoRoot, message),
     stashPop: (repoRoot) => git.stashPop(repoRoot),
     createBranch: (repoRoot, name, oid) => git.createBranch(repoRoot, name, oid),
@@ -286,21 +286,6 @@ export function createHostFunctions(deps: HostFunctionDeps): HostFunctions {
       await git.continueOperation(repoRoot, activity);
     },
 
-    // ---- feedback ----
-    async isFeedbackConfigured() {
-      return feedback.isConfigured();
-    },
-    // Chốt chặn cuối: FeedbackService đã tự bắt lỗi, nhưng nếu có gì ngoài dự
-    // kiến ném ra (payload lạ, service đổi sau này) thì cũng phải thành
-    // FeedbackResult — Error đi qua birpc bị JSON hoá thành {} nên webview sẽ
-    // treo ở trạng thái "Đang gửi…" mà không biết vì sao.
-    async sendFeedback(payload) {
-      try {
-        return await feedback.send(payload);
-      } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
-      }
-    },
   };
 
   async function currentActivity(repoRoot: string) {

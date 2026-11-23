@@ -17,7 +17,7 @@ export class RepoManager {
   ) {}
 
   async listRepos(): Promise<RepoInfo[]> {
-    const folders = this.workspace.getFolders();
+    const folders = await this.workspace.getFolders();
     const nested = await Promise.all(
       folders.map(async (folder) => {
         const parent = await this.describeRepo(folder.fsPath, folder.name);

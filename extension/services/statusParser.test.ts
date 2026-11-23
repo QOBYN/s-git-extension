@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseStatusV2 } from './statusParser';
+import { parseStatusV2, parseSubmoduleStates } from './statusParser';
 
 const NUL = '\0';
 
@@ -111,5 +111,39 @@ describe('parseStatusV2', () => {
     expect(files[0]).toMatchObject({ path: 'libs/child', submodule: true });
     expect(files[1].submodule).toBeUndefined();
     expect(files[2]).toMatchObject({ path: 'libs/conflicted', conflicted: true, submodule: true });
+  });
+});
+
+describe('parseSubmoduleStates', () => {
+  const H = '160000 160000 160000 ' + 'a'.repeat(40) + ' ' + 'a'.repeat(40);
+
+  it('chỉ lấy entry submodule; đọc đúng cờ con trỏ lệch (C) và dirty (M/U)', () => {
+    const out = porcelain(
+      '# branch.head main',
+      `1 .M N... 100644 100644 100644 ${'b'.repeat(40)} ${'b'.repeat(40)} src/a.ts`,
+      `1 .M SC.. ${H} libs/moved`,
+      `1 .M S.M. ${H} libs/dirty tracked`,
+      `1 .M S..U ${H} libs/untracked`,
+      `1 .M SCMU ${H} libs/all`,
+      '? junk.txt',
+    );
+    expect(parseSubmoduleStates(out)).toEqual([
+      { path: 'libs/moved', pointerMoved: true, dirty: false },
+      { path: 'libs/dirty tracked', pointerMoved: false, dirty: true },
+      { path: 'libs/untracked', pointerMoved: false, dirty: true },
+      { path: 'libs/all', pointerMoved: true, dirty: true },
+    ]);
+  });
+
+  it('record rename (2) bỏ qua token origPath kế tiếp; record conflict (u) có 10 field', () => {
+    const out = porcelain(
+      `2 R. S... ${H} R100 libs/new`,
+      'libs/old',
+      `u UU S.M. 160000 160000 160000 160000 ${'a'.repeat(40)} ${'a'.repeat(40)} ${'a'.repeat(40)} libs/conflict`,
+    );
+    expect(parseSubmoduleStates(out)).toEqual([
+      { path: 'libs/new', pointerMoved: false, dirty: false },
+      { path: 'libs/conflict', pointerMoved: false, dirty: true },
+    ]);
   });
 });

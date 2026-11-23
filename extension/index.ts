@@ -11,14 +11,11 @@ import { debounce } from './core/async';
 import { FileStorage } from './adapters/fileStorage';
 import { GitWatcher } from './adapters/gitWatcher';
 import { NodeFileSystem } from './adapters/nodeFs';
-import { HttpTelegramApi } from './adapters/telegramApi';
 import { VscodeWorkspaceReader } from './adapters/vscodeWorkspace';
-import { FEEDBACK_TARGET } from './feedbackTarget';
 import { createHostFunctions } from './rpc/hostFunctions';
 import { RpcHub } from './rpc/rpcHub';
 import { CacheIndex } from './services/cacheIndex';
 import { countChangedFiles } from './services/changeBadge';
-import { FeedbackService } from './services/feedbackService';
 import { GitService } from './services/gitService';
 import { SpawnGitRunner } from './services/gitRunner';
 import { MediaExporter } from './services/mediaExporter';
@@ -47,15 +44,6 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push({ dispose: () => void mediaExporter.dispose() });
   // Webview phải được phép đọc thư mục tạm này (localResourceRoots).
   setExtraResourceRoots([vscode.Uri.file(mediaExporter.dir)]);
-  const feedback = new FeedbackService({
-    config: FEEDBACK_TARGET,
-    api: new HttpTelegramApi(),
-    appInfo: {
-      extensionVersion: (context.extension.packageJSON as { version?: string }).version ?? '0.0.0',
-      vscodeVersion: vscode.version,
-      platform: process.platform,
-    },
-  });
 
   const hub = new RpcHub();
   // panelOpener tham chiếu hostFunctions qua closure (gọi sau khi activate xong) —
@@ -118,7 +106,6 @@ export function activate(context: vscode.ExtensionContext): void {
       },
       openExternal: (fsPath) => void vscode.env.openExternal(vscode.Uri.file(fsPath)),
     },
-    feedback,
     mediaExporter,
     toWebviewUri,
   });

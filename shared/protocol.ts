@@ -7,12 +7,11 @@
 
 import type {
   CheckoutOptions,
+  CheckoutStashResult,
   CommitFileChange,
   CommitOptions,
   DiffPayload,
   DiffTarget,
-  FeedbackPayload,
-  FeedbackResult,
   LogOptions,
   LogPage,
   MergeResult,
@@ -50,6 +49,12 @@ export interface HostFunctions {
   ): Promise<SubmoduleLogPage>;
   /** Toàn bộ refs cho sidebar nhánh (local/remote/tag — ui-analysis B1). */
   listRefs(repoRoot: string): Promise<RefInfo[]>;
+  /**
+   * Popup Checkout: tên điền sẵn cho "Nhánh mới" — nhánh remote gần nhất chứa
+   * commit (`origin/dev~3` → `dev`), không có thì nhánh local gần nhất; null khi
+   * commit không thuộc nhánh nào. Tên thô, chưa xét va chạm với nhánh local đã có.
+   */
+  suggestBranchName(repoRoot: string, oid: string): Promise<string | null>;
   /** Danh sách file thay đổi của 1 commit (panel B6). */
   getCommitFiles(repoRoot: string, oid: string): Promise<CommitFileChange[]>;
   /** Message đầy đủ (subject + body) của 1 commit — panel chi tiết B5. */
@@ -98,13 +103,25 @@ export interface HostFunctions {
    */
   checkout(repoRoot: string, ref: string, opts?: CheckoutOptions): Promise<void>;
   /**
-   * Popup Checkout khi working tree bẩn: tạm cất MỌI thay đổi (kể cả untracked)
-   * trước khi checkout — `git stash push -u`. Trả về có tạo stash hay không:
-   * false khi không có gì cất được (vd chỉ đổi con trỏ submodule) — webview
-   * phải BỎ QUA bước stash pop.
+   * Popup Checkout, lựa chọn "Stash & re-apply": stash (-u) repo cha VÀ bên trong
+   * từng submodule đang dirty → checkout → sync submodule không lệch con trỏ →
+   * stash pop lại từng nơi. Checkout hỏng thì pop lại hết rồi ném lỗi; các bước
+   * sau checkout hỏng thì KHÔNG ném — trả về warnings (thay đổi vẫn nằm trong stash).
+   */
+  checkoutStashReapply(
+    repoRoot: string,
+    ref: string,
+    opts?: CheckoutOptions,
+    stashMessage?: string,
+  ): Promise<CheckoutStashResult>;
+  /**
+   * Dirty Guard (pull/merge/rebase bị từ chối vì working tree bẩn): tạm cất MỌI
+   * thay đổi (kể cả untracked) rồi thử lại — `git stash push -u`. Trả về có tạo
+   * stash hay không: false khi không có gì cất được (vd chỉ đổi con trỏ submodule)
+   * — webview phải BỎ QUA bước stash pop.
    */
   stashPush(repoRoot: string, message?: string): Promise<boolean>;
-  /** Re-apply stash mới nhất sau checkout (`git stash pop`) — conflict ném GitError nguyên văn. */
+  /** Re-apply stash mới nhất (`git stash pop`) — conflict ném GitError nguyên văn. */
   stashPop(repoRoot: string): Promise<void>;
   /** Context menu commit (ui-analysis E): Add Branch… / Add Tag… tại commit. */
   createBranch(repoRoot: string, name: string, oid: string): Promise<void>;
@@ -175,18 +192,6 @@ export interface HostFunctions {
   abortOperation(repoRoot: string): Promise<void>;
   continueOperation(repoRoot: string): Promise<void>;
 
-  // ---- feedback — form góp ý gửi thẳng vào group Telegram ----
-  /**
-   * Bản build này có gắn sẵn bot token + chat id không (đích Telegram nằm trong
-   * bundle — extension/feedbackTarget.ts, người dùng không đổi được).
-   */
-  isFeedbackConfigured(): Promise<boolean>;
-  /**
-   * Gửi góp ý: đính kèm (ảnh/file) đi TRƯỚC, message đi SAU — để trong group
-   * phần chữ nằm ngay dưới các file của nó. Không ném lỗi: mọi thất bại trả về
-   * trong FeedbackResult.
-   */
-  sendFeedback(payload: FeedbackPayload): Promise<FeedbackResult>;
 }
 
 /** Hàm host gọi ngược sang webview (thông báo — không cần trả lời). */
@@ -203,4 +208,15 @@ export interface WebviewFunctions {
     ref?: string | null,
     search?: string | null,
   ): void;
+  /**
+   * Mở màn File Log NGAY TRONG panel này (Orca chỉ có 1 panel; VSCode mở tab
+   * File Log riêng nên không dùng).
+   */
+  showFileLog(repoRoot: string, relPath: string): void;
+  /**
+   * Danh sách repo đổi (Orca: thêm/bớt workspace, đổi workspace đang focus) —
+   * webview tải lại repos. `focusRoot` = repo của workspace vừa focus: panel
+   * chuyển sang repo đó; null = giữ repo đang xem.
+   */
+  reposChanged(focusRoot: string | null): void;
 }

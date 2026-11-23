@@ -29,7 +29,8 @@ const DIRTY_CHOICES: DirtyChoice[] = [
   {
     value: 'stash-reapply',
     label: 'Stash & re-apply',
-    detail: 'git stash push -u → checkout → stash pop — thay đổi quay lại trên nhánh mới',
+    detail:
+      'git stash push -u → checkout → stash pop — thay đổi quay lại trên nhánh mới; submodule đang dirty cũng được stash & pop bên trong, submodule đã tự checkout commit khác giữ nguyên chỗ đứng',
   },
   {
     value: 'bring',

@@ -19,11 +19,13 @@ const FALLBACK_REMOVED = { r: 248, g: 81, b: 73 }; // đỏ git
  */
 export function defineSmartGitTheme(): string {
   const body = document.body.classList;
-  const base: monaco.editor.BuiltinTheme = body.contains('vscode-light')
-    ? 'vs'
-    : body.contains('vscode-high-contrast')
-      ? 'hc-black'
-      : 'vs-dark';
+  // VSCode gắn class theme lên <body>; panel Orca gắn `light`/`dark` lên <html>.
+  const base: monaco.editor.BuiltinTheme =
+    body.contains('vscode-light') || document.documentElement.classList.contains('light')
+      ? 'vs'
+      : body.contains('vscode-high-contrast')
+        ? 'hc-black'
+        : 'vs-dark';
   const name = `s-git-${base}`;
 
   const inserted = readVar('--vscode-diffEditor-insertedTextBackground') ?? {

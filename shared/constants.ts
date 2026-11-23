@@ -19,20 +19,3 @@ export const SUBMODULE_PREVIEW_COMMITS = 20;
 
 /** Số commit mỗi lần "show more" trong view diff submodule. */
 export const SUBMODULE_LOG_PAGE_SIZE = 50;
-
-// ---- feedback ----
-
-/**
- * Trần dung lượng 1 file đính kèm (10 MB) — đúng bằng giới hạn `sendPhoto` của
- * Telegram Bot API, và cũng là mức nội dung base64 còn đi lọt postMessage mượt.
- */
-export const FEEDBACK_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
-
-/** Số file đính kèm tối đa mỗi lần gửi. */
-export const FEEDBACK_MAX_ATTACHMENTS = 5;
-
-/** Trần độ dài message của Telegram `sendMessage` — vượt thì cắt bớt phần mô tả. */
-export const TELEGRAM_MAX_MESSAGE_CHARS = 4096;
-
-/** Trần độ dài caption của `sendPhoto`/`sendDocument`. */
-export const TELEGRAM_MAX_CAPTION_CHARS = 1024;

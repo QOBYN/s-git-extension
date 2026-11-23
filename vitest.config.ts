@@ -5,7 +5,12 @@ import { defineConfig } from 'vitest/config';
 // file này khi tồn tại.
 export default defineConfig({
   test: {
-    include: ['extension/**/*.test.ts', 'shared/**/*.test.ts', 'src/**/*.test.{ts,tsx}'],
+    include: [
+      'extension/**/*.test.ts',
+      'shared/**/*.test.ts',
+      'src/**/*.test.{ts,tsx}',
+      'orca/worker/**/*.test.ts',
+    ],
     // Logic thuần chạy môi trường node; component webview sẽ tự khai báo
     // môi trường jsdom per-file khi tới giai đoạn UI.
     environment: 'node',

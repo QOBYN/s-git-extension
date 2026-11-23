@@ -1,0 +1,177 @@
+/* Panel plugin Orca. UI viết theo CSS variable của VSCode (--vscode-*, xem
+   global.css); frame Orca chỉ có --orca-* (cập nhật tại chỗ khi đổi theme,
+   `light`/`dark` trên <html>) → định nghĩa từng biến VSCode UI dùng theo biến Orca.
+   Chỉ áp khi <html data-sg-host="orca"> (orca/panel/index.html) — webview VSCode
+   không bị ảnh hưởng. Đặt trên :root vì global.css khai --sg-* ở :root bằng
+   var(--vscode-*), biến phải có mặt ở chính phần tử đó. */
+
+:root[data-sg-host='orca'] {
+  /* Sidebar phải của Orca vẽ trên --sidebar (frame không có) — dark theme là --card. */
+  --sg-orca-surface: var(--orca-card, var(--orca-background));
+
+  --vscode-font-family: var(--orca-font-sans, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
+  --vscode-editor-font-family: var(
+    --orca-font-mono,
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace
+  );
+
+  --vscode-foreground: var(--orca-foreground);
+  --vscode-descriptionForeground: var(--orca-muted-foreground);
+  --vscode-editor-background: var(--sg-orca-surface);
+  --vscode-sideBar-background: color-mix(in srgb, var(--orca-foreground) 3%, var(--sg-orca-surface));
+  --vscode-panel-border: var(--orca-border);
+  --vscode-focusBorder: var(--orca-ring);
+  --vscode-textLink-foreground: var(--orca-primary);
+  --vscode-errorForeground: var(--orca-destructive);
+
+  --vscode-list-hoverBackground: color-mix(in srgb, var(--orca-foreground) 7%, transparent);
+  --vscode-list-activeSelectionBackground: var(--orca-accent);
+  --vscode-list-activeSelectionForeground: var(--orca-accent-foreground);
+  --vscode-list-inactiveSelectionBackground: color-mix(in srgb, var(--orca-foreground) 10%, transparent);
+  --vscode-list-inactiveSelectionForeground: var(--orca-foreground);
+
+  --vscode-badge-background: var(--orca-primary);
+  --vscode-badge-foreground: var(--orca-primary-foreground);
+
+  --vscode-input-background: color-mix(in srgb, var(--orca-foreground) 6%, var(--orca-background));
+  --vscode-input-foreground: var(--orca-foreground);
+  --vscode-input-border: var(--orca-input);
+  --vscode-dropdown-background: var(--orca-popover);
+  --vscode-dropdown-foreground: var(--orca-popover-foreground);
+  --vscode-dropdown-border: var(--orca-border);
+
+  --vscode-menu-background: var(--orca-popover);
+  --vscode-menu-foreground: var(--orca-popover-foreground);
+  --vscode-menu-border: var(--orca-border);
+  --vscode-menu-selectionBackground: var(--orca-accent);
+  --vscode-menu-selectionForeground: var(--orca-accent-foreground);
+  --vscode-menu-separatorBackground: var(--orca-border);
+  --vscode-editorHoverWidget-background: var(--orca-popover);
+  --vscode-editorHoverWidget-foreground: var(--orca-popover-foreground);
+  --vscode-editorHoverWidget-border: var(--orca-border);
+
+  --vscode-button-background: var(--orca-primary);
+  --vscode-button-foreground: var(--orca-primary-foreground);
+  --vscode-button-hoverBackground: color-mix(in srgb, var(--orca-primary) 85%, var(--orca-foreground));
+  --vscode-button-secondaryBackground: var(--orca-secondary);
+  --vscode-button-secondaryForeground: var(--orca-secondary-foreground);
+
+  --vscode-scrollbarSlider-background: color-mix(in srgb, var(--orca-foreground) 18%, transparent);
+  --vscode-scrollbarSlider-hoverBackground: color-mix(in srgb, var(--orca-foreground) 28%, transparent);
+
+  --vscode-inputValidation-errorBackground: color-mix(
+    in srgb,
+    var(--orca-destructive) 18%,
+    var(--orca-background)
+  );
+  --vscode-inputValidation-errorForeground: var(--orca-foreground);
+  --vscode-inputValidation-warningBackground: color-mix(in srgb, #d29922 18%, var(--orca-background));
+  --vscode-inputValidation-warningForeground: var(--orca-foreground);
+  --vscode-inputValidation-warningBorder: #d29922;
+
+  /* Màu dữ liệu (không có token Orca tương ứng) — bảng màu git quen thuộc. */
+  --vscode-charts-yellow: #d29922;
+  --vscode-charts-green: #3fb950;
+  --vscode-gitDecoration-addedResourceForeground: #3fb950;
+  --vscode-gitDecoration-modifiedResourceForeground: #d29922;
+  --vscode-gitDecoration-deletedResourceForeground: #f85149;
+  --vscode-gitDecoration-renamedResourceForeground: #58a6ff;
+  /* Giá trị rgba thuần: monaco/theme.ts parse trực tiếp (không hiểu color-mix). */
+  --vscode-diffEditor-insertedLineBackground: rgba(63, 185, 80, 0.16);
+  --vscode-diffEditor-removedLineBackground: rgba(248, 81, 73, 0.16);
+}
+
+:root[data-sg-host='orca'].light {
+  /* --sidebar của light theme ≈ --card pha 2% foreground. */
+  --sg-orca-surface: color-mix(in srgb, var(--orca-foreground) 2%, var(--orca-card, var(--orca-background)));
+  --vscode-charts-yellow: #9a6700;
+  --vscode-gitDecoration-addedResourceForeground: #1a7f37;
+  --vscode-gitDecoration-modifiedResourceForeground: #9a6700;
+  --vscode-gitDecoration-deletedResourceForeground: #cf222e;
+  --vscode-gitDecoration-renamedResourceForeground: #0969da;
+}
+
+/* ===== Bố cục 1 panel: [cây sidebar nhúng] | [panel chính] (screens/OrcaScreen) ===== */
+
+.sg-orca-shell {
+  position: relative;
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Panel hẹp (OrcaScreen.OVERLAY_BELOW_PX): cây nổi đè lên, bấm nền để đóng. */
+.sg-orca-shell.overlay .sg-orca-side {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 30;
+  max-width: 85%;
+  box-shadow: 4px 0 18px rgba(0, 0, 0, 0.35);
+}
+
+.sg-orca-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 29;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.sg-orca-side {
+  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--sg-border);
+  background: var(--sg-bg-panel);
+}
+
+.sg-orca-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  container: sg-orca-main / inline-size;
+}
+
+/* Panel chính hẹp: Fetch/Pull/Push chỉ còn icon (title vẫn giải thích). */
+@container sg-orca-main (max-width: 620px) {
+  .sg-toolbar .sg-toolbar-btn > span {
+    display: none;
+  }
+  .sg-toolbar .sg-toolbar-btn {
+    padding: 4px 6px;
+  }
+  /* Thanh công cụ diff: xuống dòng thay vì tràn ngang (tên file 1 dòng riêng). */
+  .sg-diff-toolbar {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .sg-diff-toolbar .sg-diff-file {
+    flex-basis: 100%;
+    white-space: nowrap;
+  }
+  .sg-diff-toolbar .sg-tool {
+    white-space: nowrap;
+  }
+}
+
+/* Nút chỉ có icon (☰ bật/tắt cây) — vuông, trạng thái bật tô nền. */
+.sg-toolbar-btn.sg-icon-btn {
+  padding: 4px 6px;
+}
+
+.sg-toolbar-btn.sg-icon-btn.active {
+  background: var(--sg-row-selected);
+  color: var(--sg-row-selected-fg);
+}
+
+/* File Log nhúng trong panel chính — chiếm chỗ thân màn hình. */
+.sg-filelog-embedded {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}

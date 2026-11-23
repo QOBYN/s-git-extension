@@ -11,6 +11,7 @@ import {
 } from '../../shared/constants';
 import type {
   CheckoutOptions,
+  CheckoutStashResult,
   CommitFileChange,
   CommitInfo,
   DiffTarget,
@@ -32,8 +33,13 @@ import { foldersFromPaths } from '../../shared/folders';
 import { GitError, type GitRunner } from './gitRunner';
 import { parseSubmodulePaths } from './submoduleParser';
 import { LOG_FORMAT, parseLog } from './logParser';
-import { FOR_EACH_REF_ARGS, parseRefs } from './refParser';
-import { parseStatusV2, type StatusResult } from './statusParser';
+import { FOR_EACH_REF_ARGS, parseNameRev, parseRefs } from './refParser';
+import {
+  parseStatusV2,
+  parseSubmoduleStates,
+  type StatusResult,
+  type SubmoduleState,
+} from './statusParser';
 
 export interface GitServiceOptions {
   /** Số commit mỗi trang log; mặc định DEFAULT_LOG_PAGE_SIZE (spec 6.3). */
@@ -86,7 +92,8 @@ export class GitService {
     return name === '' ? null : name; // rỗng = detached HEAD hoặc repo trống
   }
 
-  async getLog(root: string, opts: LogOptions = {}): Promise<LogPage> {
+  async getLog(root: string, options?: LogOptions | null): Promise<LogPage> {
+    const opts = options ?? {};
     const limit = opts.limit ?? this.logPageSize;
     const args = [
       'log',
@@ -128,7 +135,8 @@ export class GitService {
     };
   }
 
-  async getStatus(root: string, scope: StatusScope = 'changes'): Promise<StatusResult> {
+  async getStatus(root: string, scope?: StatusScope | null): Promise<StatusResult> {
+    scope ??= 'changes';
     const out = await this.runner.run(root, [
       'status',
       '--porcelain=v2',
@@ -158,6 +166,28 @@ export class GitService {
 
   async listRefs(root: string): Promise<RefInfo[]> {
     return parseRefs(await this.runner.run(root, [...FOR_EACH_REF_ARGS]));
+  }
+
+  /**
+   * Tên gợi ý cho ô "Nhánh mới" của popup Checkout: nhánh REMOTE gần nhất chứa
+   * commit (`name-rev` — trúng tip hay nằm giữa nhánh đều có tên; origin/HEAD bỏ
+   * qua), không có thì nhánh LOCAL gần nhất; null khi commit không thuộc nhánh nào.
+   * Chỉ trả tên thô — webview tự xử va chạm với nhánh local đã có.
+   */
+  async suggestBranchName(root: string, oid: string): Promise<string | null> {
+    const remote = await this.runner.run(root, [
+      'name-rev',
+      '--name-only',
+      '--refs=refs/remotes/*',
+      '--exclude=refs/remotes/*/HEAD',
+      oid,
+    ]);
+    const fromRemote = parseNameRev(remote, 'remote');
+    if (fromRemote !== null) {
+      return fromRemote;
+    }
+    const local = await this.runner.run(root, ['name-rev', '--name-only', '--refs=refs/heads/*', oid]);
+    return parseNameRev(local, 'local');
   }
 
   /**
@@ -506,9 +536,9 @@ export class GitService {
     await this.runner.run(root, ['restore', '--staged', '--', ...paths], { exclusive: true });
   }
 
-  async commit(root: string, message: string, opts: { amend?: boolean } = {}): Promise<void> {
+  async commit(root: string, message: string, opts?: { amend?: boolean } | null): Promise<void> {
     const args = ['commit', '--message', message];
-    if (opts.amend) {
+    if (opts?.amend) {
       args.push('--amend');
     }
     await this.runner.run(root, args, { exclusive: true });
@@ -518,12 +548,27 @@ export class GitService {
    * Discard = bỏ thay đổi CHƯA stage: khôi phục working tree từ index
    * (đúng ngữ nghĩa Discard của SmartGit — ui-analysis G: Discard ≠ Remove ≠ Delete).
    * File untracked không bị đụng tới (xoá file thật là hành động Delete riêng, P2).
+   *
+   * Path là SUBMODULE: `restore` không đụng working tree repo con (gitlink) — exit 0
+   * mà không đổi gì. Phải `submodule update --init --force -- <path>`: checkout lại
+   * commit ghi trong index của repo cha, bỏ luôn thay đổi tracked bên trong repo
+   * con (file untracked trong repo con vẫn giữ — cùng quy tắc với file thường).
    */
   async discard(root: string, paths: string[]): Promise<void> {
     if (paths.length === 0) {
       return;
     }
-    await this.runner.run(root, ['restore', '--', ...paths], { exclusive: true });
+    const submodules = new Set(await this.listSubmodulePaths(root));
+    const files = paths.filter((p) => !submodules.has(p));
+    const subs = paths.filter((p) => submodules.has(p));
+    if (files.length > 0) {
+      await this.runner.run(root, ['restore', '--', ...files], { exclusive: true });
+    }
+    if (subs.length > 0) {
+      await this.runner.run(root, ['submodule', 'update', '--init', '--force', '--', ...subs], {
+        exclusive: true,
+      });
+    }
   }
 
   /**
@@ -536,22 +581,17 @@ export class GitService {
    *    local (con trỏ lệch/dirty) — thay đổi đó stash không cất được, user chọn
    *    mang theo thì update sẽ xoá mất.
    */
-  async checkout(root: string, ref: string, opts: CheckoutOptions = {}): Promise<void> {
+  async checkout(root: string, ref: string, opts?: CheckoutOptions | null): Promise<void> {
+    // Webview gọi không truyền opts → qua postMessage JSON hoá thành null (không
+    // phải undefined) nên default param không áp dụng — chuẩn hoá tại đây.
+    const o = opts ?? {};
     const subPaths = await this.listSubmodulePaths(root);
     const syncSubmodules =
-      subPaths.length > 0 && (opts.force || !(await this.hasSubmoduleChanges(root)));
-    const args = ['checkout'];
-    if (opts.force) {
-      args.push('--force');
-    }
-    if (opts.newBranch !== undefined) {
-      args.push('-b', opts.newBranch); // tạo nhánh mới tại ref rồi đứng trên đó
-    }
-    args.push(ref);
-    await this.runner.run(root, args, { exclusive: true });
+      subPaths.length > 0 && (o.force || (await this.listSubmoduleStates(root)).length === 0);
+    await this.runner.run(root, checkoutArgs(ref, o), { exclusive: true });
     if (syncSubmodules) {
       const subArgs = ['submodule', 'update', '--init'];
-      if (opts.force) {
+      if (o.force) {
         subArgs.push('--force');
       }
       await this.runner.run(root, subArgs, { exclusive: true });
@@ -559,13 +599,85 @@ export class GitService {
   }
 
   /**
-   * Working tree đang có submodule thay đổi (con trỏ lệch / nội dung dirty)?
-   * Porcelain v2: entry của submodule có field <sub> bắt đầu bằng 'S'
-   * (vd "1 .M SC.. …" = con trỏ lệch) — chỉ file thay đổi mới có entry.
+   * Checkout kiểu "Stash & re-apply" của popup Checkout — làm trọn gói ở đây vì
+   * phải theo dõi từng submodule (`git stash` của repo cha KHÔNG cất gì trong repo
+   * con: cả con trỏ lệch lẫn file sửa bên trong đều bị bỏ qua, "No local changes"):
+   *  1. stash repo cha (-u); stash BÊN TRONG từng submodule đang dirty.
+   *  2. checkout. Hỏng → pop lại tất cả rồi ném lỗi — working tree về như cũ.
+   *  3. `submodule update --init` cho submodule KHÔNG lệch con trỏ để theo con trỏ
+   *     của nhánh mới; submodule user đã tự checkout commit khác thì giữ nguyên chỗ
+   *     đứng (đúng nghĩa "re-apply" thay đổi con trỏ).
+   *  4. pop repo cha, rồi pop từng submodule (lên trên con trỏ mới).
+   * Bước 3–4 lỗi KHÔNG ném — checkout đã xong; trả về warnings để UI báo, thay đổi
+   * vẫn nằm trong stash của repo tương ứng.
    */
-  private async hasSubmoduleChanges(root: string): Promise<boolean> {
+  async checkoutStashReapply(
+    root: string,
+    ref: string,
+    opts?: CheckoutOptions | null,
+    stashMessage?: string | null,
+  ): Promise<CheckoutStashResult> {
+    const o = opts ?? {};
+    const subPaths = await this.listSubmodulePaths(root);
+    const states = subPaths.length > 0 ? await this.listSubmoduleStates(root) : [];
+    const dirtySubs = states.filter((s) => s.dirty && subPaths.includes(s.path)).map((s) => s.path);
+    const movedSubs = new Set(states.filter((s) => s.pointerMoved).map((s) => s.path));
+
+    const stashedSuper = await this.stashPush(root, stashMessage);
+    const stashedSubs: string[] = [];
+    try {
+      for (const sub of dirtySubs) {
+        if (await this.stashPush(join(root, sub), stashMessage)) {
+          stashedSubs.push(sub);
+        }
+      }
+      await this.runner.run(root, checkoutArgs(ref, o), { exclusive: true });
+    } catch (error) {
+      // Rollback: pop hết, lỗi pop nuốt — stash vẫn còn đó cho user tự xử.
+      if (stashedSuper) {
+        await this.stashPop(root).catch(() => undefined);
+      }
+      for (const sub of stashedSubs) {
+        await this.stashPop(join(root, sub)).catch(() => undefined);
+      }
+      throw error;
+    }
+
+    const warnings: CheckoutStashResult['warnings'] = [];
+    const toSync = subPaths.filter((p) => !movedSubs.has(p));
+    if (toSync.length > 0) {
+      try {
+        await this.runner.run(root, ['submodule', 'update', '--init', '--', ...toSync], {
+          exclusive: true,
+        });
+      } catch (error) {
+        warnings.push({ path: null, message: errorMessage(error) });
+      }
+    }
+    if (stashedSuper) {
+      try {
+        await this.stashPop(root);
+      } catch (error) {
+        warnings.push({ path: null, message: errorMessage(error) });
+      }
+    }
+    for (const sub of stashedSubs) {
+      try {
+        await this.stashPop(join(root, sub));
+      } catch (error) {
+        warnings.push({ path: sub, message: errorMessage(error) });
+      }
+    }
+    return { warnings };
+  }
+
+  /**
+   * Submodule đang có thay đổi (con trỏ lệch / nội dung dirty) — rỗng = mọi
+   * submodule khớp con trỏ và sạch. Chỉ submodule thay đổi mới có entry trong status.
+   */
+  private async listSubmoduleStates(root: string): Promise<SubmoduleState[]> {
     const out = await this.runner.run(root, ['status', '--porcelain=v2', '-z']);
-    return out.split('\0').some((line) => /^[12u] .. S/.test(line));
+    return parseSubmoduleStates(out);
   }
 
   /**
@@ -575,9 +687,9 @@ export class GitService {
    * "No local changes to save", exit 0 và KHÔNG tạo entry — caller phải bỏ qua
    * bước `stash pop` kẻo lỗi "No stash entries found" (LC_ALL=C nên message ổn định).
    */
-  async stashPush(root: string, message?: string): Promise<boolean> {
+  async stashPush(root: string, message?: string | null): Promise<boolean> {
     const args = ['stash', 'push', '--include-untracked'];
-    if (message !== undefined) {
+    if (message !== undefined && message !== null) {
       args.push('-m', message);
     }
     const out = await this.runner.run(root, args, { exclusive: true });
@@ -676,13 +788,14 @@ export class GitService {
    * (pull.rebase/pull.ff…) — không áp đặt chiến lược. Conflict/từ chối:
    * git trả stderr với hint rõ ràng, UI hiển thị nguyên văn.
    */
-  async pull(root: string, mode?: PullMode): Promise<void> {
+  async pull(root: string, mode?: PullMode | null): Promise<void> {
     const flags: Record<PullMode, string> = {
       merge: '--no-rebase',
       rebase: '--rebase',
       'ff-only': '--ff-only',
     };
-    const args = mode === undefined ? ['pull'] : ['pull', flags[mode]];
+    // mode null: webview không truyền → JSON hoá qua postMessage (xem checkout).
+    const args = mode === undefined || mode === null ? ['pull'] : ['pull', flags[mode]];
     await this.runner.run(root, args, { exclusive: true });
   }
 
@@ -693,8 +806,8 @@ export class GitService {
    * Có `to` ("Push to…"): đẩy HEAD lên nhánh chỉ định — refs/heads/ tường minh
    * để tạo nhánh mới trên remote khi chưa tồn tại, không đụng upstream hiện tại.
    */
-  async push(root: string, to?: PushTarget): Promise<void> {
-    if (to !== undefined) {
+  async push(root: string, to?: PushTarget | null): Promise<void> {
+    if (to !== undefined && to !== null) {
       await this.runner.run(root, ['push', '--', to.remote, `HEAD:refs/heads/${to.branch}`], {
         exclusive: true,
       });
@@ -821,4 +934,21 @@ function isEmptyRepoError(error: unknown): boolean {
       error.stderr.includes('bad default revision') ||
       error.stderr.includes('unknown revision'))
   );
+}
+
+/** Args `git checkout` theo CheckoutOptions — dùng chung cho checkout thường và stash & re-apply. */
+function checkoutArgs(ref: string, o: CheckoutOptions): string[] {
+  const args = ['checkout'];
+  if (o.force) {
+    args.push('--force');
+  }
+  if (o.newBranch !== undefined && o.newBranch !== null) {
+    args.push('-b', o.newBranch); // tạo nhánh mới tại ref rồi đứng trên đó
+  }
+  args.push(ref);
+  return args;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

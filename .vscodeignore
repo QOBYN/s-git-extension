@@ -12,6 +12,12 @@ shared/**
 scripts/**
 index.html
 
+# ---- plugin Orca: gói riêng (orca-plugin.json), không thuộc .vsix ----
+orca/**
+orca-plugin.json
+.orca/**
+vite.orca.config.ts
+
 # ---- config build/test: chỉ dùng lúc dev ----
 tsconfig.json
 **/tsconfig.json

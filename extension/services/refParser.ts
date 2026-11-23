@@ -55,3 +55,32 @@ export function parseRefs(stdout: string): RefInfo[] {
   }
   return refs;
 }
+
+/**
+ * Tên nhánh từ output `git name-rev --name-only --refs=<namespace>/*` — nhánh GẦN
+ * NHẤT chứa commit, dạng `remotes/origin/dev~3`, `origin/dev^2~1`, `dev` (trúng tip
+ * thì không có hậu tố). Trả tên nhánh không kèm remote (`dev`); null khi git in
+ * `undefined` (không nhánh nào trong namespace chứa commit) hoặc rỗng (oid lạ).
+ */
+export function parseNameRev(stdout: string, kind: 'remote' | 'local'): string | null {
+  let name = stdout.trim().split('\n')[0] ?? '';
+  if (name === '' || name === 'undefined') {
+    return null;
+  }
+  // Bỏ hậu tố khoảng cách: `~N` / `^N` (có thể nối tiếp nhau).
+  const cut = name.search(/[~^]/);
+  if (cut !== -1) {
+    name = name.slice(0, cut);
+  }
+  if (kind === 'remote') {
+    name = name.replace(/^remotes\//, '');
+    const slash = name.indexOf('/');
+    if (slash === -1) {
+      return null; // không có phần remote — output lạ
+    }
+    name = name.slice(slash + 1);
+  } else {
+    name = name.replace(/^heads\//, '');
+  }
+  return name === '' || name === 'HEAD' ? null : name;
+}

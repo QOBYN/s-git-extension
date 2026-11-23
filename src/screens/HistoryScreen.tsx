@@ -37,15 +37,27 @@ export function HistoryScreen() {
   const [mergeOid, setMergeOid] = useState<string | null>(null);
   /** Dialog Reset nhánh hiện tại về commit (context menu) — oid đích. */
   const [resetOid, setResetOid] = useState<string | null>(null);
-  /** Popup Checkout (double-click dòng log / menu Check Out…) — oid đích. */
-  const [checkoutOid, setCheckoutOid] = useState<string | null>(null);
+  /**
+   * Popup Checkout (double-click dòng log / menu Check Out…) — oid đích + tên
+   * điền sẵn cho "Nhánh mới" (hỏi git trước khi mở để dialog nhận ngay từ đầu).
+   */
+  const [checkout, setCheckout] = useState<{ oid: string; suggestedName: string } | null>(null);
+  const checkoutOid = checkout?.oid ?? null;
 
   const activeRepo = store.repos.find((r) => r.root === store.activeRepoRoot) ?? null;
 
-  /** Mở popup Checkout: refetch status trước để đếm change chưa commit chính xác. */
-  const openCheckout = (commit: CommitInfo) => {
+  /**
+   * Mở popup Checkout: refetch status (đếm change chưa commit chính xác) và hỏi
+   * tên nhánh gợi ý song song; mở popup khi có tên (1 lệnh git, gần như tức thì).
+   */
+  const openCheckout = async (commit: CommitInfo) => {
+    const root = store.activeRepoRoot;
+    if (root === null) {
+      return;
+    }
     void store.refreshStatus();
-    setCheckoutOid(commit.oid);
+    const suggestedName = await store.suggestBranchName(root, commit.oid);
+    setCheckout({ oid: commit.oid, suggestedName });
   };
 
   /** Context menu commit — mục E: nhóm separator, hint phím tắt, disable ≠ ẩn. */
@@ -58,7 +70,7 @@ export function HistoryScreen() {
           label: 'Check Out…',
           hint: '⌘G',
           disabled: store.loading,
-          onClick: () => openCheckout(commit),
+          onClick: () => void openCheckout(commit),
         },
         {
           label: 'Merge…',
@@ -154,25 +166,6 @@ export function HistoryScreen() {
       : store.refs.filter(
           (r) => r.kind === 'local' && r.oid === checkoutCommit.oid && !r.isHead,
         );
-  /**
-   * Tên gợi ý cho ô "Nhánh mới": lấy theo nhánh REMOTE trỏ tại commit
-   * (origin/feature-x → feature-x), bỏ tên đã có nhánh local (checkout -b sẽ
-   * bị git từ chối) và origin/HEAD. Không có thì để trống cho user tự gõ.
-   */
-  const suggestedBranchName = (() => {
-    if (checkoutCommit === null) {
-      return '';
-    }
-    const localNames = new Set(
-      store.refs.filter((r) => r.kind === 'local').map((r) => r.name),
-    );
-    return (
-      store.refs
-        .filter((r) => r.kind === 'remote' && r.oid === checkoutCommit.oid)
-        .map((r) => r.name.slice(r.name.indexOf('/') + 1))
-        .find((name) => name !== 'HEAD' && !localNames.has(name)) ?? ''
-    );
-  })();
 
   /**
    * ↑/↓ trong diff chạm biên change đầu/cuối → chuyển file trước/sau TRONG CÙNG
@@ -311,7 +304,7 @@ export function HistoryScreen() {
                   void store.selectCommit(oid);
                 }}
                 onContextMenu={openCommitMenu}
-                onDoubleClick={openCheckout}
+                onDoubleClick={(c) => void openCheckout(c)}
               />
             ))}
             <div style={{ height: slice.bottomPad }} />
@@ -387,8 +380,8 @@ export function HistoryScreen() {
           ]}
           newBranchAt={checkoutCommit.oid}
           // Không có nhánh local tại commit → "Nhánh mới" là mặc định, tên điền
-          // sẵn theo nhánh remote trỏ tại commit (origin/feature-x → feature-x).
-          newBranchDefaultName={suggestedBranchName}
+          // sẵn theo nhánh remote gần nhất chứa commit (store.suggestBranchName).
+          newBranchDefaultName={checkout?.suggestedName ?? ''}
           newBranchPreselected={localBranchesAtCheckout.length === 0}
           note={
             localBranchesAtCheckout.length > 0 ? undefined : (
@@ -402,7 +395,7 @@ export function HistoryScreen() {
           onSubmit={(ref, dirty, newBranch) =>
             void store.checkoutCommit(activeRepo.root, ref, dirty, newBranch)
           }
-          onClose={() => setCheckoutOid(null)}
+          onClose={() => setCheckout(null)}
         />
       )}
       {mergeOid !== null && activeRepo !== null && (

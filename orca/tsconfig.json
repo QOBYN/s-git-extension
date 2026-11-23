@@ -1,0 +1,21 @@
+{
+  // Worker của plugin Orca (Node) — dùng lại services của extension/ nên cùng
+  // cấu hình với extension/tsconfig.json. Panel Orca chính là webview src/
+  // (src/tsconfig.json), chỉ khác entry HTML ở orca/panel/.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["worker/**/*.ts", "../shared/**/*.ts"]
+}

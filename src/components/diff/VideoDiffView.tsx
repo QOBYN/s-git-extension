@@ -47,11 +47,15 @@ function VideoSide({
         {size !== null && <span className="sg-detail-meta"> {formatBytes(size)}</span>}
       </div>
       <div className="sg-image-frame">
-        {uri === null ? (
+        {uri === null && fsPath === null ? (
           <span className="sg-empty small">(no video)</span>
-        ) : failed ? (
+        ) : uri === null || failed ? (
           <div className="sg-media-fallback">
-            <p>Codec không phát được trong VSCode (thường là H.264/HEVC).</p>
+            <p>
+              {uri === null
+                ? 'Panel này không phát video trực tiếp được.'
+                : 'Codec không phát được trong VSCode (thường là H.264/HEVC).'}
+            </p>
             {fsPath !== null && (
               <button className="sg-tool primary" onClick={() => void host.openPathExternal(fsPath)}>
                 Open with system player

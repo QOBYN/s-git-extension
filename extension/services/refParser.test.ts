@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseRefs } from './refParser';
+import { parseNameRev, parseRefs } from './refParser';
 
 const F = '\x1f';
 
@@ -29,5 +29,25 @@ describe('parseRefs', () => {
 
   it('output rỗng trả mảng rỗng', () => {
     expect(parseRefs('')).toEqual([]);
+  });
+});
+
+describe('parseNameRev', () => {
+  it('remote: bỏ tiền tố remotes/<remote>/ và hậu tố khoảng cách ~N / ^N', () => {
+    expect(parseNameRev('remotes/origin/main~1\n', 'remote')).toBe('main');
+    expect(parseNameRev('remotes/origin/dev', 'remote')).toBe('dev');
+    expect(parseNameRev('origin/main~1^2', 'remote')).toBe('main');
+    expect(parseNameRev('remotes/upstream/feature/x~12', 'remote')).toBe('feature/x');
+  });
+
+  it('local: giữ nguyên tên nhánh, bỏ hậu tố', () => {
+    expect(parseNameRev('dev~2', 'local')).toBe('dev');
+    expect(parseNameRev('main', 'local')).toBe('main');
+  });
+
+  it('undefined / rỗng / HEAD → null', () => {
+    expect(parseNameRev('undefined\n', 'remote')).toBeNull();
+    expect(parseNameRev('', 'remote')).toBeNull();
+    expect(parseNameRev('remotes/origin/HEAD', 'remote')).toBeNull();
   });
 });

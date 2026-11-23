@@ -5,6 +5,7 @@
 import { create } from 'zustand';
 import type {
   CheckoutDirtyAction,
+  CheckoutStashResult,
   CommitFileChange,
   CommitInfo,
   DiffPayload,
@@ -100,6 +101,11 @@ interface RepoStoreState {
   foldersByRepo: Record<string, string[]>;
   /** Status từng repo — sidebar hiện badge số change per repo/folder. */
   statusByRepo: Record<string, FileChange[]>;
+  /**
+   * Webview này có hiện cây sidebar (initSidebar đã chạy) — VSCode: webview
+   * sidebar riêng; Orca: cây nhúng chung document với panel chính.
+   */
+  sidebarLoaded: boolean;
   /** Ô filter nhánh/tag của sidebar tab Git. */
   sidebarRefFilter: string;
   /**
@@ -131,6 +137,15 @@ interface RepoStoreState {
 
   init(): Promise<void>;
   initSidebar(): Promise<void>;
+  /**
+   * Orca: mở File Log NGAY TRONG panel (VSCode mở tab riêng) — log lọc theo
+   * file thay cho graph cho tới khi closeFileLog.
+   */
+  showFileLog(repoRoot: string, path: string): Promise<void>;
+  /** Thoát File Log nhúng, trả lại graph đầy đủ của repo. */
+  closeFileLog(): Promise<void>;
+  /** Danh sách repo đổi phía host — nạp lại, chuyển sang `focusRoot` nếu có. */
+  reloadRepos(focusRoot: string | null): Promise<void>;
   /** Sidebar: nạp refs của tất cả repo vào refsByRepo. */
   loadAllRefs(): Promise<void>;
   /** Sidebar: nạp danh sách remote của tất cả repo. */
@@ -147,8 +162,9 @@ interface RepoStoreState {
   /**
    * Checkout từ popup Checkout (double-click dòng log / menu Check Out… của
    * History, hoặc double-click nhánh ở sidebar — nên nhận repoRoot tường minh):
-   * `dirty` là cách xử lý thay đổi chưa commit — stash & re-apply / mang theo /
-   * discard (--force). Working tree sạch thì dirty nào cũng như 'bring'.
+   * `dirty` là cách xử lý thay đổi chưa commit — stash & re-apply (cả bên trong
+   * submodule đang dirty) / mang theo / discard (--force). Working tree sạch thì
+   * dirty nào cũng như 'bring'.
    * `newBranch`: tạo nhánh mới tên này tại ref rồi checkout (`-b`) — tránh detached.
    */
   checkoutCommit(
@@ -159,6 +175,13 @@ interface RepoStoreState {
   ): Promise<void>;
   /** Refetch status repo active — popup Checkout gọi lúc mở để đếm change chính xác. */
   refreshStatus(): Promise<void>;
+  /**
+   * Tên điền sẵn cho ô "Nhánh mới" của popup Checkout: theo nhánh remote gần nhất
+   * chứa commit (origin/dev~3 → dev), fallback nhánh local gần nhất. Tên đã có
+   * nhánh local (checkout -b sẽ bị git từ chối) thì thêm hậu tố oid rút gọn
+   * (main → main-f975b96). Rỗng khi không suy ra được — user tự gõ.
+   */
+  suggestBranchName(repoRoot: string, oid: string): Promise<string>;
   /** Context menu commit (E): Add Branch/Tag tại commit; refs refresh sau khi tạo. */
   createBranchAt(name: string, oid: string): Promise<void>;
   createTagAt(name: string, oid: string): Promise<void>;
@@ -230,15 +253,14 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
   // Nhận notification từ host: watcher .git/ phát hiện thay đổi → refetch.
   setNotificationHandlers({
     repoChanged: (repoRoot, delta) => {
-      // Webview sidebar không chọn repo active — refresh danh sách repo + refs.
-      if (get().activeRepoRoot === null) {
+      // Cây sidebar hiện MỌI repo — refresh danh sách repo + refs + status.
+      if (get().sidebarLoaded) {
         void host.listRepos().then((repos) => set({ repos }));
         void get().loadAllRefs();
         void get().loadAllStatuses();
         void get().loadAllFolders();
-        return;
       }
-      if (repoRoot !== get().activeRepoRoot) {
+      if (get().activeRepoRoot === null || repoRoot !== get().activeRepoRoot) {
         return;
       }
       if (delta.changed.includes('log') || delta.changed.includes('refs')) {
@@ -250,6 +272,8 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
       }
     },
     operationProgress: (message) => set({ statusMessage: message }),
+    showFileLog: (repoRoot, path) => void get().showFileLog(repoRoot, path),
+    reposChanged: (focusRoot) => void get().reloadRepos(focusRoot),
     // Sidebar click → host reveal panel + gửi navigate tới webview panel này.
     navigate: (repoRoot, mode, folder, ref, search) => {
       if (mode !== null) {
@@ -356,6 +380,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
     folderScope: window.__SMARTGIT_INIT__?.folder ?? null,
     foldersByRepo: {},
     statusByRepo: {},
+    sidebarLoaded: false,
     sidebarRefFilter: '',
     sidebarTreeCmd: { seq: 0, open: false },
     workingSelection: null,
@@ -464,7 +489,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
 
     /** Init nhẹ cho sidebar: KHÔNG tải log (selectRepo) — chỉ repos + refs + folders. */
     async initSidebar() {
-      set({ loading: true, error: null });
+      set({ loading: true, error: null, sidebarLoaded: true });
       try {
         const repos = await host.listRepos();
         set({ repos, loading: false, statusMessage: 'Ready' });
@@ -476,6 +501,55 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
         ]);
       } catch (error) {
         set({ loading: false, error: formatError(error) });
+      }
+    },
+
+    async showFileLog(repoRoot, path) {
+      set({
+        fileLogPath: path,
+        selectedOid: null,
+        commitBody: null,
+        commitFiles: [],
+        selectedFile: null,
+        diff: null,
+      });
+      if (repoRoot !== get().activeRepoRoot) {
+        await get().selectRepo(repoRoot); // selectRepo tải log theo fileLogPath
+      } else {
+        await fetchLog(repoRoot, false);
+      }
+    },
+
+    async closeFileLog() {
+      set({ fileLogPath: null, selectedOid: null, commitBody: null, commitFiles: [], selectedFile: null, diff: null });
+      const root = get().activeRepoRoot;
+      if (root !== null) {
+        await fetchLog(root, false);
+      }
+    },
+
+    async reloadRepos(focusRoot) {
+      try {
+        const repos = await host.listRepos();
+        set({ repos });
+        if (get().sidebarLoaded) {
+          void get().loadAllRefs();
+          void get().loadAllRemotes();
+          void get().loadAllStatuses();
+          void get().loadAllFolders();
+        }
+        const active = get().activeRepoRoot;
+        const target =
+          (focusRoot !== null ? repos.find((r) => r.root === focusRoot) : undefined) ??
+          (active !== null && repos.some((r) => r.root === active) ? undefined : repos[0]);
+        if (target !== undefined && target.root !== active) {
+          set({ fileLogPath: null }); // đổi repo → File Log của repo cũ hết nghĩa
+          await get().selectRepo(target.root);
+        } else if (target === undefined && repos.length === 0) {
+          set({ activeRepoRoot: null, statusMessage: 'No git repository in workspace' });
+        }
+      } catch (error) {
+        set({ error: formatError(error) });
       }
     },
 
@@ -718,33 +792,18 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
       const label = newBranch !== undefined ? `${newBranch}' at '${short}` : short;
       const opts = newBranch !== undefined ? { newBranch } : undefined;
       set({ error: null, loading: true, statusMessage: `Checking out '${label}'…` });
-      /** Re-apply stash bị conflict — checkout VẪN thành công, chỉ cảnh báo thêm. */
-      let popConflict: string | null = null;
+      /** Bước sau checkout (sync submodule / stash pop) lỗi — checkout VẪN xong, chỉ cảnh báo. */
+      let warnings: CheckoutStashResult['warnings'] = [];
       try {
         if (dirty === 'stash-reapply') {
-          // stashed=false: không có gì cất được (vd chỉ đổi con trỏ submodule —
-          // stash không xử lý gitlink) → checkout thẳng, TUYỆT ĐỐI không pop
-          // kẻo "No stash entries found" làm cả thao tác trông như thất bại.
-          const stashed = await host.stashPush(
+          // Extension làm trọn gói (stash cha + từng submodule dirty → checkout →
+          // pop); checkout hỏng thì bên đó đã pop lại hết trước khi ném lỗi.
+          ({ warnings } = await host.checkoutStashReapply(
             root,
+            ref,
+            opts,
             `s-git: auto-stash before checkout '${short}'`,
-          );
-          try {
-            await host.checkout(root, ref, opts);
-          } catch (error) {
-            // Checkout hỏng → pop lại ngay để trả working tree về như cũ.
-            if (stashed) {
-              await host.stashPop(root).catch(() => undefined); // pop hỏng nữa: stash vẫn còn đó
-            }
-            throw error;
-          }
-          if (stashed) {
-            try {
-              await host.stashPop(root);
-            } catch (error) {
-              popConflict = formatError(error);
-            }
-          }
+          ));
         } else {
           await host.checkout(
             root,
@@ -755,10 +814,12 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
         // Refresh TRƯỚC rồi mới set message chốt (như remoteOp) — fetchLog set
         // 'Ready' đè lên. refreshRepoData tự lo cả trường hợp sidebar (per-repo).
         await refreshRepoData(root);
-        if (popConflict !== null) {
+        if (warnings.length > 0) {
           set({
-            error: popConflict,
-            statusMessage: `Checked out '${label}' — re-apply gặp conflict, thay đổi vẫn nằm trong stash.`,
+            error: warnings
+              .map((w) => (w.path === null ? w.message : `Submodule '${w.path}': ${w.message}`))
+              .join('\n'),
+            statusMessage: `Checked out '${label}' — re-apply gặp lỗi, thay đổi vẫn nằm trong stash.`,
           });
         } else {
           set({
@@ -780,6 +841,20 @@ export const useRepoStore = create<RepoStoreState>((set, get) => {
         await refreshRepoData(root);
       }
       set({ loading: false });
+    },
+
+    async suggestBranchName(repoRoot, oid) {
+      let name: string | null;
+      try {
+        name = await host.suggestBranchName(repoRoot, oid);
+      } catch {
+        name = null; // gợi ý là tiện ích — lỗi thì để trống, không chặn popup
+      }
+      if (name === null) {
+        return '';
+      }
+      const localExists = get().refs.some((r) => r.kind === 'local' && r.name === name);
+      return localExists ? `${name}-${oid.slice(0, 7)}` : name;
     },
 
     async refreshStatus() {

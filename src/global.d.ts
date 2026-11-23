@@ -12,6 +12,15 @@ interface Window {
   };
   /** Instance acquireVsCodeApi — chỉ acquire được 1 lần/webview (src/rpc.ts). */
   __vscodeApi?: ReturnType<typeof acquireVsCodeApi>;
+  /**
+   * Frame API của Orca — chỉ có khi chạy làm panel plugin Orca (src/env.ts).
+   * Chỉ khai phần S-Git dùng; đầy đủ ở docs/reference/plugin-authoring.md của Orca.
+   */
+  orca?: {
+    readonly plugin: import('./orcaBridge').OrcaFramePlugin;
+    readonly locale?: string;
+    on?(event: string, handler: (payload: unknown) => void): { dispose(): void };
+  };
 }
 
 /** Thời điểm build bundle (vite define) — hiện ở status bar để debug bundle cũ/mới. */

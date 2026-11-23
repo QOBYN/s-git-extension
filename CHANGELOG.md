@@ -8,6 +8,34 @@ dùng đọc — mô tả thay đổi nhìn thấy được, không phải tên 
 
 ## [Unreleased]
 
+### Added
+
+- Chạy được như **plugin của [Orca](https://orca.dev)**: panel S-Git ở sidebar phải với đủ
+  History / Working Tree / diff / merge / file log; tự chuyển theo workspace đang mở trong Orca;
+  nút bật/tắt cây thư mục + nhánh ngay trong panel; status bar Orca hiện số file thay đổi
+
+### Removed
+
+- Nút **Feedback** và form gửi góp ý qua Telegram (ở toolbar panel và đáy sidebar)
+
+### Changed
+
+- Popup Checkout: ô **Nhánh mới** luôn được điền sẵn tên — lấy theo nhánh remote gần nhất chứa
+  commit (`origin/dev` → `dev`, kể cả khi commit nằm giữa nhánh), không có thì theo nhánh local
+  gần nhất; tên đã có nhánh local thì thêm hậu tố hash (`main-f975b96`) để `checkout -b` không bị từ chối
+- Popup Checkout, lựa chọn **Stash & re-apply** giờ xử lý cả submodule: thay đổi chưa commit
+  **bên trong** submodule được stash rồi pop lại trên con trỏ của nhánh mới (trước đây bị bỏ
+  qua vì `git stash` của repo cha không cất gì trong repo con); submodule đã tự checkout commit
+  khác thì giữ nguyên chỗ đứng. Bước sync/pop nào lỗi thì checkout vẫn xong, thanh trạng thái
+  báo rõ repo nào còn stash
+
+### Fixed
+
+- Checkout nhánh (double-click log / nhánh sidebar) trong repo có submodule bị lỗi
+  `Cannot read properties of null (reading 'force')`
+- **Discard** trên item submodule ở Working Tree không có tác dụng — giờ reset con trỏ về đúng
+  commit đang ghi trong index và bỏ thay đổi tracked bên trong repo con
+
 ## [0.0.4] - 2026-08-27
 
 ### Added

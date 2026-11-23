@@ -3,9 +3,14 @@
 // impl giả (Fake*) nằm trong test. Services CHỈ được phụ thuộc file này —
 // đây chính là ranh giới Dependency Inversion của architecture.md mục 1.
 
-/** Danh sách folder đang mở trong workspace (bọc vscode.workspace). */
+/**
+ * Danh sách folder đang mở — VSCode: workspace folders (đồng bộ); Orca: các
+ * workspace local (phải hỏi host nên được phép trả Promise).
+ */
 export interface WorkspaceReader {
-  getFolders(): ReadonlyArray<{ name: string; fsPath: string }>;
+  getFolders():
+    | ReadonlyArray<{ name: string; fsPath: string }>
+    | Promise<ReadonlyArray<{ name: string; fsPath: string }>>;
 }
 
 /** Truy cập file hệ thống tối thiểu — đủ cho RepoStateReader đọc .git/. */

@@ -30,3 +30,20 @@ Secrets khai ở repo **Settings → Secrets and variables → Actions**:
 
 - `VSCE_PAT` — Azure DevOps PAT (dev.azure.com, cùng Microsoft account sở hữu publisher `qobyn`): Organization chọn *All accessible organizations*, scope *Marketplace → Manage*.
 - `OVSX_PAT` — token từ <https://open-vsx.org/user-settings/tokens> (login GitHub, ký Publisher Agreement, tạo namespace `qobyn` một lần bằng `npx ovsx create-namespace qobyn -p <token>`).
+
+## Plugin Orca
+
+Orca cài plugin thẳng từ commit của tag `vX.Y.Z` (không chạy build), nên bản build
+`orca/out/` phải nằm trong chính commit đó. `npm version` (gọi bởi `npm run release:*`)
+tự chạy script `version`: `npm run build:orca` → đồng bộ `version` của
+[`orca-plugin.json`](../orca-plugin.json) theo `package.json` → `git add` vào commit bump.
+
+Lần đầu đưa lên danh mục plugin của Orca (chỉ làm 1 lần):
+
+```bash
+gh repo edit QOBYN/s-git-extension --add-topic orca-plugin
+```
+
+Sau đó mỗi tag `vX.Y.Z` mới được Orca tự quét (~1 giờ). Kiểm tra trạng thái ở
+<https://orca.dev/plugins/qobyn/s-git-extension>. Trước khi tag nên chạy
+`orca plugin validate .` (cần Orca ≥ 1.4.248) để bắt lỗi manifest sớm.

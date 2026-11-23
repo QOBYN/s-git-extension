@@ -120,9 +120,11 @@ export const DiffView = forwardRef<DiffViewHandle, Props>(function DiffView(
       onDiffUpdateRef.current?.(computeStats(editor.getLineChanges() ?? []));
     });
 
-    // Theme VSCode đổi (user toggle dark/light) → body class đổi → sync lại.
+    // Theme đổi (user toggle dark/light) → class đổi → sync lại. VSCode đổi
+    // class <body>, Orca đổi class <html> — theo dõi cả hai.
     const themeObserver = new MutationObserver(syncMonacoTheme);
     themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 
     return () => {
       updateSub.dispose();

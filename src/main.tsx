@@ -1,7 +1,15 @@
 import { Component, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { IS_ORCA } from './env';
 import './styles/global.css';
+import './styles/orca.css';
+
+// Panel Orca: bật bảng ánh xạ màu --orca-* → --vscode-* (styles/orca.css). Entry
+// HTML của Orca đã gắn sẵn; gắn lại ở đây phòng khi chạy từ entry khác.
+if (IS_ORCA) {
+  document.documentElement.dataset.sgHost = 'orca';
+}
 
 // Dev-only: hover element + ⌘C để copy context component (file:line) cho AI agent.
 // Không bao giờ vào bundle production — vite tree-shake cả dynamic import này khi build.

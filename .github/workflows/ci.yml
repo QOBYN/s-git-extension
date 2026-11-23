@@ -24,7 +24,7 @@ jobs:
 
       - run: npm ci
 
-      # 3 tsconfig riêng (extension host / webview / config root) — xem package.json.
+      # 4 tsconfig riêng (extension host / webview / worker Orca / config root) — xem package.json.
       - name: Typecheck
         run: npm run typecheck
 
@@ -33,6 +33,10 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # Plugin Orca (orca/out/) — chỉ kiểm build được; bản commit được tạo lúc `npm version`.
+      - name: Build Orca plugin
+        run: npm run build:orca
 
       # Package luôn ở CI: bắt sớm lỗi manifest/.vscodeignore thay vì để lộ ra
       # lúc release (thiếu icon, thiếu README, dist/ bị ignore nhầm…).

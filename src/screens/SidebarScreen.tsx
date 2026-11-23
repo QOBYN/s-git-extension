@@ -10,14 +10,14 @@ import { useEffect, useState } from 'react';
 import type { RefInfo, RemoteInfo, RepoInfo } from '../../shared/types';
 import { childFolders } from '../../shared/folders';
 import { CheckoutDialog } from '../components/CheckoutDialog';
+import { ConfirmDeleteDialog } from '../components/ConfirmDeleteDialog';
 import { ContextMenu, type MenuState } from '../components/ContextMenu';
 import { DirtyGuardDialog } from '../components/DirtyGuardDialog';
-import { FeedbackButton } from '../components/FeedbackButton';
-import { FeedbackDialog } from '../components/FeedbackDialog';
 import { ForceDeleteDialog } from '../components/ForceDeleteDialog';
 import { MergeDialog } from '../components/MergeDialog';
 import { PromptModal } from '../components/PromptModal';
 import { RemoteDialog } from '../components/RemoteDialog';
+import { IS_ORCA } from '../env';
 import { host } from '../rpc';
 import { useRepoStore } from '../store/repoStore';
 import { copyText } from '../utils/clipboard';
@@ -46,7 +46,15 @@ type SidebarTab = 'workingTree' | 'git';
 // Nhãn menu theo OS như VSCode ("Reveal in Finder" chỉ đúng trên macOS).
 const IS_MAC = navigator.userAgent.includes('Mac');
 
-export function SidebarScreen() {
+interface Props {
+  /**
+   * Orca: cây nằm chung panel với MainScreen — banner lỗi và popup Dirty Guard
+   * (đọc chung store) để MainScreen hiện, tránh hiện 2 lần.
+   */
+  embedded?: boolean;
+}
+
+export function SidebarScreen({ embedded = false }: Props = {}) {
   const store = useRepoStore();
   const [tab, setTab] = useState<SidebarTab>('workingTree');
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -58,7 +66,10 @@ export function SidebarScreen() {
   } | null>(null);
   const [mergePrompt, setMergePrompt] = useState<MergePrompt | null>(null);
   const [remotePrompt, setRemotePrompt] = useState<RemotePrompt | null>(null);
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  /** Orca: xác nhận xoá thư mục (VSCode hỏi bằng modal phía host). */
+  const [deletePrompt, setDeletePrompt] = useState<{ repoRoot: string; folder: string } | null>(
+    null,
+  );
   /** Popup Checkout (double-click nhánh / menu Check Out) — nhánh + repo đích. */
   const [checkoutPrompt, setCheckoutPrompt] = useState<{ repo: RepoInfo; ref: string } | null>(
     null,
@@ -91,12 +102,17 @@ export function SidebarScreen() {
           label: IS_MAC ? 'Reveal in Finder' : 'Reveal in File Explorer',
           onClick: () => void host.revealInOS(repo.root, rel),
         },
-        {
-          label: 'Open in Integrated Terminal',
-          onClick: () => void host.openInTerminal(repo.root, rel),
-        },
-        'sep',
-        { label: 'Find in Folder…', onClick: () => void host.findInFolder(repo.root, rel) },
+        // Orca chưa có API mở terminal / Search view cho plugin — ẩn 2 mục này.
+        ...(IS_ORCA
+          ? []
+          : ([
+              {
+                label: 'Open in Integrated Terminal',
+                onClick: () => void host.openInTerminal(repo.root, rel),
+              },
+              'sep',
+              { label: 'Find in Folder…', onClick: () => void host.findInFolder(repo.root, rel) },
+            ] as const)),
         'sep',
         {
           label: 'Copy Path',
@@ -121,7 +137,12 @@ export function SidebarScreen() {
           label: 'Delete',
           disabled: folder === null,
           onClick: () => {
-            if (folder !== null) {
+            if (folder === null) {
+              return;
+            }
+            if (IS_ORCA) {
+              setDeletePrompt({ repoRoot: repo.root, folder });
+            } else {
               void store.deleteFolder(repo.root, folder);
             }
           },
@@ -260,14 +281,16 @@ export function SidebarScreen() {
         )}
       </div>
 
-      {/* Luôn nằm đáy sidebar — lối góp ý ở đâu cũng thấy, không phải tìm. */}
-      <div className="sg-sidebar-footer">
-        <FeedbackButton onClick={() => setFeedbackOpen(true)} />
-      </div>
-
-      {store.error !== null && <div className="sg-error">{store.error}</div>}
+      {!embedded && store.error !== null && <div className="sg-error">{store.error}</div>}
 
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {deletePrompt !== null && (
+        <ConfirmDeleteDialog
+          path={deletePrompt.folder}
+          onConfirm={() => void store.deleteFolder(deletePrompt.repoRoot, deletePrompt.folder)}
+          onClose={() => setDeletePrompt(null)}
+        />
+      )}
       {checkoutPrompt !== null && (
         <CheckoutDialog
           description={
@@ -294,7 +317,7 @@ export function SidebarScreen() {
         />
       )}
       {/* Merge/rebase từ sidebar cũng có thể bị chặn vì working tree bẩn. */}
-      {store.dirtyGuard !== null && (
+      {!embedded && store.dirtyGuard !== null && (
         <DirtyGuardDialog
           opLabel={store.dirtyGuard.opLabel}
           message={store.dirtyGuard.message}
@@ -309,17 +332,6 @@ export function SidebarScreen() {
           message={store.forceDeletePrompt.message}
           onForceDelete={() => void store.confirmForceDeleteBranch()}
           onClose={() => store.dismissForceDeleteBranch()}
-        />
-      )}
-      {feedbackOpen && (
-        <FeedbackDialog
-          context={{
-            screen: 'sidebar',
-            // Sidebar không có repo "đang chọn"; 1 repo thì lấy luôn cho đỡ hỏi.
-            repoName: store.repos.length === 1 ? store.repos[0].name : null,
-            branch: store.repos.length === 1 ? store.repos[0].branch : null,
-          }}
-          onClose={() => setFeedbackOpen(false)}
         />
       )}
       {renamePrompt && (

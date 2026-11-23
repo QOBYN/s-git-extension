@@ -12,13 +12,24 @@ import { useVirtualList } from '../hooks/useVirtualList';
 import { useLayoutStore } from '../store/layoutStore';
 import { useRepoStore } from '../store/repoStore';
 
-export function FileLogScreen() {
+interface Props {
+  /**
+   * Orca: File Log nằm trong panel chính (thay thân màn hình) — không tự init,
+   * có nút quay lại; toolbar + status bar là của panel chính.
+   */
+  embedded?: { onBack(): void };
+}
+
+export function FileLogScreen({ embedded }: Props = {}) {
   const store = useRepoStore();
   const layout = useLayoutStore();
   const filePath = store.fileLogPath;
 
   useEffect(() => {
-    void useRepoStore.getState().init();
+    if (embedded === undefined) {
+      void useRepoStore.getState().init();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ init 1 lần khi mount
   }, []);
 
   const graph = useMemo(() => layoutGraph(store.commits), [store.commits]);
@@ -47,8 +58,13 @@ export function FileLogScreen() {
   };
 
   return (
-    <div className="sg-app">
+    <div className={embedded !== undefined ? 'sg-filelog-embedded' : 'sg-app'}>
       <div className="sg-graph-header">
+        {embedded !== undefined && (
+          <button className="sg-tool" title="Quay lại History / Working Tree" onClick={embedded.onBack}>
+            ← Back
+          </button>
+        )}
         <span className="sg-diff-file" title={filePath ?? ''}>
           Log for {filePath}
         </span>
@@ -56,7 +72,7 @@ export function FileLogScreen() {
         <span className="sg-detail-meta">{store.commits.length} commits</span>
       </div>
 
-      {store.error !== null && <div className="sg-error">{store.error}</div>}
+      {embedded === undefined && store.error !== null && <div className="sg-error">{store.error}</div>}
 
       <div className="sg-main">
         <div className="sg-commit-list" ref={listRef} onScroll={slice.onScroll}>
@@ -100,10 +116,12 @@ export function FileLogScreen() {
         </>
       )}
 
-      <div className="sg-status-bar">
-        <span className={`sg-status-dot${store.loading ? ' busy' : ''}`} />
-        {store.loading ? 'Working…' : store.statusMessage}
-      </div>
+      {embedded === undefined && (
+        <div className="sg-status-bar">
+          <span className={`sg-status-dot${store.loading ? ' busy' : ''}`} />
+          {store.loading ? 'Working…' : store.statusMessage}
+        </div>
+      )}
     </div>
   );
 }
