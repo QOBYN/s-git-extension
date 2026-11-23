@@ -13,8 +13,71 @@
         "path": "orca/plugin"
       },
       "description": "Git client: multi-branch commit graph, hunk staging, side-by-side diff, merge/rebase and file log. Follows the focused workspace.",
-      "categories": ["git"],
-      "releases": []
+      "categories": [
+        "git"
+      ],
+      "releases": [
+        {
+          "version": "0.0.8",
+          "commit": "67b5cdeb78d243ea8ccf86aa09b031a2087fbdb3",
+          "contentHash": "87294d114dbce0525cb6a8e2a9b9b004fa6fc0190396bdbd144708095abe78e3",
+          "execution": "trusted-worker",
+          "minimumOrca": "1.4.248",
+          "name": "S-Git",
+          "contributes": [
+            {
+              "kind": "panels",
+              "name": "S-Git"
+            },
+            {
+              "kind": "events",
+              "name": "workspace.changed"
+            },
+            {
+              "kind": "events",
+              "name": "workspace.created"
+            },
+            {
+              "kind": "events",
+              "name": "workspace.removed"
+            },
+            {
+              "kind": "customEditors",
+              "name": "S-Git",
+              "detail": ".sgit"
+            },
+            {
+              "kind": "newFiles",
+              "name": "S-Git",
+              "detail": ".sgit"
+            },
+            {
+              "kind": "statusBarItems",
+              "name": "S-Git"
+            }
+          ],
+          "capabilities": [
+            "workspace:read",
+            "workspace:write",
+            "settings:own"
+          ],
+          "fileTypes": [
+            "sgit"
+          ],
+          "editorFileTypes": [
+            "sgit"
+          ],
+          "images": {
+            "icon": {
+              "path": "orca/plugin/icon.png",
+              "alt": "S-Git",
+              "sha256": "a86322681f2bc8e18f52e7ed5a5e563d48f2f2593eccfa9ffaa4868a7825dca5",
+              "width": 256,
+              "height": 256
+            }
+          }
+        }
+      ]
     }
   ]
 }
